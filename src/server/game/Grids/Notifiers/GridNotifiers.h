@@ -21,13 +21,11 @@
 #include "AreaTrigger.h"
 #include "Corpse.h"
 #include "Creature.h"
-#include "CreatureAI.h"
 #include "DynamicObject.h"
 #include "GameObject.h"
 #include "Player.h"
 #include "Spell.h"
 #include "SpellInfo.h"
-#include "TemporarySummon.h"
 #include "UnitAI.h"
 #include "UpdateData.h"
 
@@ -681,13 +679,13 @@ namespace Trinity
                 if (go->GetGOInfo()->type != GAMEOBJECT_TYPE_SPELL_FOCUS)
                     return false;
 
-                if (go->GetGOInfo()->spellFocus.focusId != _focusId)
+                if (go->GetGOInfo()->spellFocus.spellFocusType != _focusId)
                     return false;
 
                 if (!go->isSpawned())
                     return false;
 
-                float const dist = go->GetGOInfo()->spellFocus.dist / 2.f;
+                float const dist = go->GetGOInfo()->spellFocus.radius / 2.f;
                 return go->IsWithinDistInMap(_caster, dist);
             }
         private:
@@ -1219,9 +1217,10 @@ namespace Trinity
     class NearestHostileUnitInAggroRangeCheck
     {
         public:
-            explicit NearestHostileUnitInAggroRangeCheck(Creature const* creature, bool useLOS = false) : _me(creature), _useLOS(useLOS)
+            explicit NearestHostileUnitInAggroRangeCheck(Creature const* creature, bool useLOS = false, bool ignoreCivilians = false) : _me(creature), _useLOS(useLOS), _ignoreCivilians(ignoreCivilians)
             {
             }
+
             bool operator()(Unit* u)
             {
                 if (!u->IsHostileTo(_me))
@@ -1236,12 +1235,19 @@ namespace Trinity
                 if (_useLOS && !u->IsWithinLOSInMap(_me))
                     return false;
 
+                // pets in aggressive do not attack civilians
+                if (_ignoreCivilians)
+                    if (Creature* c = u->ToCreature())
+                        if (c->IsCivilian())
+                            return false;
+
                 return true;
             }
 
     private:
             Creature const* _me;
             bool _useLOS;
+            bool _ignoreCivilians;
             NearestHostileUnitInAggroRangeCheck(NearestHostileUnitInAggroRangeCheck const&);
     };
 
@@ -1569,6 +1575,21 @@ namespace Trinity
             bool _present;
             uint32 _spellId;
             ObjectGuid _casterGUID;
+    };
+
+    class ObjectEntryAndPrivateOwnerIfExistsCheck
+    {
+    public:
+        ObjectEntryAndPrivateOwnerIfExistsCheck(ObjectGuid ownerGUID, uint32 entry) : _ownerGUID(ownerGUID), _entry(entry) { }
+
+        bool operator()(WorldObject* object) const
+        {
+            return object->GetEntry() == _entry && (!object->IsPrivateObject() || object->GetPrivateObjectOwner() == _ownerGUID);
+        }
+
+    private:
+        ObjectGuid _ownerGUID;
+        uint32 _entry;
     };
 
     // Player checks and do

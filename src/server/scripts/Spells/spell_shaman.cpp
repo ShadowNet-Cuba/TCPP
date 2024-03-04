@@ -29,8 +29,11 @@
 #include "SpellHistory.h"
 #include "SpellMgr.h"
 #include "SpellScript.h"
+#include "TemporarySummon.h"
 #include "Unit.h"
 
+namespace Spells::Shaman
+{
 enum ShamanSpells
 {
     SPELL_SHAMAN_ANCESTRAL_AWAKENING            = 52759,
@@ -75,6 +78,7 @@ enum ShamanSpells
     SPELL_SHAMAN_ITEM_LIGHTNING_SHIELD          = 23552,
     SPELL_SHAMAN_ITEM_LIGHTNING_SHIELD_DAMAGE   = 27635,
     SPELL_SHAMAN_ITEM_MANA_SURGE                = 23571,
+    SPELL_SHAMAN_ITEM_SHAMAN_T12_ELEMENTAL_4P   = 99206,
     SPELL_SHAMAN_LIGHTNING_SHIELD               = 324,
     SPELL_SHAMAN_LIGHTNING_SHIELD_DAMAGE        = 26364,
     SPELL_SHAMAN_MAELSTROM_DUMMY                = 60349,
@@ -97,6 +101,7 @@ enum ShamanSpells
     SPELL_SHAMAN_UNLEASH_FROST                  = 73682,
     SPELL_SHAMAN_UNLEASH_FLAME                  = 73683,
     SPELL_SHAMAN_UNLEASH_EARTH                  = 73684,
+    SPELL_SHAMAN_VOLCANO                        = 99207,
     SPELL_SHAMAN_WATER_SHIELD                   = 52127,
     SPELL_SHAMAN_WINDFURY_ATTACK_MAINHAND       = 25504,
     SPELL_SHAMAN_WINDFURY_ATTACK_OFFHAND        = 33750,
@@ -276,17 +281,15 @@ class spell_sha_earth_shield : public AuraScript
     void HandleProc(AuraEffect const* aurEff, ProcEventInfo& /*eventInfo*/)
     {
         PreventDefaultAction();
-
         Unit* caster = GetCaster();
         if (!caster)
             return;
 
-        Unit* target = GetTarget();
-        int32 basePoints = caster->SpellHealingBonusDone(target, GetSpellInfo(), aurEff->GetAmount(), HEAL, EFFECT_0);
+        int32 bp = caster->SpellHealingBonusDone(GetTarget(), GetSpellInfo(), aurEff->GetAmount(), HEAL, aurEff->GetEffIndex());
         if (AuraEffect const* glyphEff = caster->GetDummyAuraEffect(SPELLFAMILY_SHAMAN, SHAMAN_ICON_ID_GLYPH_OF_EARTH_SHIELD, EFFECT_0))
-            AddPct(basePoints, glyphEff->GetAmount());
+            AddPct(bp, glyphEff->GetAmount());
 
-        target->CastSpell(target, SPELL_SHAMAN_EARTH_SHIELD_HEAL, CastSpellExtraArgs(aurEff).SetOriginalCaster(GetCasterGUID()).AddSpellBP0(basePoints));
+        GetTarget()->CastSpell(GetTarget(), SPELL_SHAMAN_EARTH_SHIELD_HEAL,  CastSpellExtraArgs(aurEff).SetOriginalCaster(GetCasterGUID()).AddSpellBP0(bp));
     }
 
     void Register() override
@@ -808,17 +811,21 @@ class spell_sha_lava_surge_proc : public SpellScript
 {
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ SPELL_SHAMAN_LAVA_BURST });
-    }
-
-    bool Load() override
-    {
-        return GetCaster()->GetTypeId() == TYPEID_PLAYER;
+        return ValidateSpellInfo(
+            {
+                SPELL_SHAMAN_LAVA_BURST,
+                SPELL_SHAMAN_VOLCANO,
+                SPELL_SHAMAN_ITEM_SHAMAN_T12_ELEMENTAL_4P
+            });
     }
 
     void HandleDummy(SpellEffIndex /*effIndex*/)
     {
-        GetCaster()->ToPlayer()->GetSpellHistory()->ResetCooldown(SPELL_SHAMAN_LAVA_BURST, true);
+        GetHitUnit()->GetSpellHistory()->ResetCooldown(SPELL_SHAMAN_LAVA_BURST, true);
+        // For some reason the aura is some weird mixture of being a proc while also not being one.
+        // Perhaps the aura got scrapped last minute and incorporated into Lava Surge.
+        if (GetHitUnit()->HasAura(SPELL_SHAMAN_ITEM_SHAMAN_T12_ELEMENTAL_4P))
+            GetHitUnit()->CastSpell(nullptr, SPELL_SHAMAN_VOLCANO, true);
     }
 
     void Register() override
@@ -835,9 +842,14 @@ class spell_sha_mana_tide_totem : public AuraScript
     void CalculateAmount(AuraEffect const* /*aurEff*/, int32& amount, bool& /*canBeRecalculated*/)
     {
         // @TODO: Exclude the "short term" buffs from the stat value
-        if (Unit* caster = GetUnitOwner())
-            if (Unit* owner = caster->GetCharmerOrOwner())
-                amount = CalculatePct(owner->GetStat(STAT_SPIRIT), amount);
+        Unit* caster = GetUnitOwner();
+        if (!caster || !caster->IsSummon())
+            return;
+
+        if (Unit* summoner = caster->ToTempSummon()->GetSummoner())
+            amount = CalculatePct(summoner->GetStat(STAT_SPIRIT), amount);
+        else
+            amount = 0;
     }
 
     void Register() override
@@ -1764,9 +1776,11 @@ class spell_sha_clearcasting : public AuraScript
         DoEffectCalcAmount.Register(&spell_sha_clearcasting::CalculateAmount, EFFECT_1, SPELL_AURA_MOD_DAMAGE_PERCENT_DONE);
     }
 };
+}
 
 void AddSC_shaman_spell_scripts()
 {
+    using namespace Spells::Shaman;
     RegisterSpellScript(spell_sha_ancestral_awakening);
     RegisterSpellScript(spell_sha_ancestral_awakening_proc);
     RegisterSpellScript(spell_sha_ancestral_healing);

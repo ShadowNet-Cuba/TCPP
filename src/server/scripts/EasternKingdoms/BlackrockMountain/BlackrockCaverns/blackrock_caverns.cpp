@@ -24,12 +24,13 @@
 #include "Player.h"
 #include "ScriptedCreature.h"
 #include "ScriptedEscortAI.h"
-#include "Spell.h"
 #include "SpellAuras.h"
 #include "SpellScript.h"
 #include "TemporarySummon.h"
 #include "InstanceScript.h"
 
+namespace BlackrockCaverns
+{
 /*#####
 # npc_fire_cyclone
 #####*/
@@ -590,6 +591,12 @@ struct npc_raz_the_crazed : public EscortAI
         DoCastSelf(SPELL_AGGRO_NEARBY_TARGETS, true);
     }
 
+    void JustEngagedWith(Unit* who) override
+    {
+        EscortAI::JustEngagedWith(who);
+        me->SetHomePosition(me->GetPosition());
+    }
+
     void JustAppeared() override
     {
         SetRun(true);
@@ -667,6 +674,9 @@ struct npc_raz_the_crazed : public EscortAI
 
         _events.Update(diff);
 
+        if (me->HasUnitState(UNIT_STATE_CASTING))
+            return;
+
         while (uint32 eventId = _events.ExecuteEvent())
         {
             switch (eventId)
@@ -726,6 +736,8 @@ struct npc_raz_the_crazed : public EscortAI
             if (me->HasUnitState(UNIT_STATE_CASTING))
                 return;
         }
+
+        DoMeleeAttackIfReady();
     }
 
 private:
@@ -745,9 +757,11 @@ class spell_brc_furious_swipe_dummy : public SpellScript
         if (Unit* caster = GetCaster())
         {
             caster->SetFacingTo(caster->GetAngle(GetHitUnit()));
-            caster->CastSpell(GetHitUnit(), SPELL_FURIOUS_SWIPE);
+            caster->SetOrientationTowards(GetHitUnit()); // Update orientation immediately
+            caster->CastSpell(nullptr, SPELL_FURIOUS_SWIPE);
+
             if (caster->GetMap()->IsHeroic()) // Heroic difficulty casts the spell twice in a row
-                caster->CastSpell(GetHitUnit(), SPELL_FURIOUS_SWIPE);
+                caster->CastSpell(nullptr, SPELL_FURIOUS_SWIPE);
         }
     }
 
@@ -773,6 +787,21 @@ class spell_brc_furious_swipe : public SpellScript
     void Register() override
     {
         OnEffectHitTarget.Register(&spell_brc_furious_swipe::HandleScriptEffect, EFFECT_1, SPELL_EFFECT_SCRIPT_EFFECT);
+    }
+};
+
+class spell_brc_aggro_nearby_targets : public AuraScript
+{
+    void HandleAggro(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        if (!GetTarget()->IsEngaged())
+            if (Unit* caster = GetCaster())
+                GetTarget()->EngageWithTarget(caster);
+    }
+
+    void Register() override
+    {
+        AfterEffectApply.Register(&spell_brc_aggro_nearby_targets::HandleAggro, EFFECT_0, SPELL_AURA_MOD_FACTION, AURA_EFFECT_HANDLE_REAL_OR_REAPPLY_MASK);
     }
 };
 
@@ -841,9 +870,11 @@ public:
 private:
     uint32 _questId = 0;
 };
+}
 
 void AddSC_blackrock_caverns()
 {
+    using namespace BlackrockCaverns;
     RegisterBlackrockCavernsCreatureAI(npc_fire_cyclone);
     RegisterBlackrockCavernsCreatureAI(npc_twilight_flame_caller);
     RegisterBlackrockCavernsCreatureAI(npc_twilight_torturer);
@@ -853,6 +884,7 @@ void AddSC_blackrock_caverns()
     RegisterBlackrockCavernsCreatureAI(npc_raz_the_crazed);
     RegisterSpellScript(spell_brc_furious_swipe_dummy);
     RegisterSpellScript(spell_brc_furious_swipe);
+    RegisterSpellScript(spell_brc_aggro_nearby_targets);
     new at_raz_corla_event();
     new at_raz_obsidius_event();
     new at_brc_quest_trigger("at_brc_corla_quest", QUEST_ID_WHAT_IS_THIS_PLACE);

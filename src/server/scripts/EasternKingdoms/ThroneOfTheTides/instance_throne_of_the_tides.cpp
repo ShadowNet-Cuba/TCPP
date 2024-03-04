@@ -28,6 +28,8 @@
 #include "Player.h"
 #include "TemporarySummon.h"
 
+namespace ThroneOfTheTides
+{
 ObjectData const creatureData[] =
 {
     { BOSS_LADY_NAZJAR,                     DATA_LADY_NAZJAR                        },
@@ -340,9 +342,6 @@ class instance_throne_of_the_tides : public InstanceMapScript
 
                 switch (go->GetEntry())
                 {
-                    case GO_TEMP_FALLING_ROCKS:
-                        go->SendCustomAnim(0);
-                        break;
                     case GO_DOODAD_ABYSSAL_MAW_DOOR_1:
                         if (_eventIndex >= EVENT_INDEX_LADY_NAZJAR_GAUNTLET)
                             go->SetGoState(GO_STATE_ACTIVE);
@@ -663,8 +662,10 @@ class instance_throne_of_the_tides : public InstanceMapScript
             return new instance_throne_of_the_tides_InstanceMapScript(map);
         }
 };
+}
 
 void AddSC_instance_throne_of_the_tides()
 {
+    using namespace ThroneOfTheTides;
     new instance_throne_of_the_tides();
 }

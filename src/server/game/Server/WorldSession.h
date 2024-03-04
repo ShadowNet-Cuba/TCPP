@@ -99,6 +99,11 @@ namespace WorldPackets
         enum class LoginFailureReason : uint8;
     }
 
+    namespace Chat
+    {
+        class SendTextEmote;
+    }
+
     namespace Combat
     {
         class AttackSwing;
@@ -191,6 +196,7 @@ namespace WorldPackets
         class SetEveryoneIsAssistant;
         class PartyInviteClient;
         class PartyInviteResponse;
+        class SetRole;
     }
 
     namespace Quest
@@ -216,12 +222,30 @@ namespace WorldPackets
         class DBQueryBulk;
     }
 
+    namespace Reforge
+    {
+        class ReforgeItem;
+    }
+
     namespace Spells
     {
         class CastSpell;
         class CancelQueuedSpell;
         class UseItem;
         class UpdateMissileTrajectory;
+    }
+
+    namespace Ticket
+    {
+        class Complaint;
+        class SupportTicketSubmitSuggestion;
+        class SupportTicketSubmitBug;
+        class SupportTicketSubmitComplaint;
+    }
+
+    namespace Totem
+    {
+        class TotemDestroyed;
     }
 
     namespace Trade
@@ -795,7 +819,7 @@ class TC_GAME_API WorldSession
         void HandleGroupUninviteOpcode(WorldPacket& recvPacket);
         void HandleGroupUninviteGuidOpcode(WorldPacket& recvPacket);
         void HandleGroupSetLeaderOpcode(WorldPacket& recvPacket);
-        void HandleGroupSetRolesOpcode(WorldPacket& recvData);
+        void HandleSetRoleOpcode(WorldPackets::Party::SetRole& packet);
         void HandleGroupDisbandOpcode(WorldPacket& recvPacket);
         void HandleOptOutOfLootOpcode(WorldPacket& recvData);
         void HandleLootMethodOpcode(WorldPacket& recvPacket);
@@ -991,7 +1015,7 @@ class TC_GAME_API WorldSession
         void SendPlayerAmbiguousNotice(std::string const& name);
         void SendWrongFactionNotice();
         void SendChatRestrictedNotice(ChatRestrictionType restriction);
-        void HandleTextEmoteOpcode(WorldPacket& recvPacket);
+        void HandleSendTextEmoteOpcode(WorldPackets::Chat::SendTextEmote& packet);
         void HandleChatIgnoredOpcode(WorldPacket& recvPacket);
 
         void HandleUnregisterAddonPrefixesOpcode(WorldPacket& recvPacket);
@@ -1051,7 +1075,7 @@ class TC_GAME_API WorldSession
 
         void HandleSetActionBarToggles(WorldPacket& recvData);
 
-        void HandleTotemDestroyed(WorldPacket& recvData);
+        void HandleTotemDestroyed(WorldPackets::Totem::TotemDestroyed& packet);
         void HandleDismissCritter(WorldPacket& recvData);
 
         //Battleground
@@ -1149,7 +1173,10 @@ class TC_GAME_API WorldSession
         void HandleAreaSpiritHealerQueueOpcode(WorldPacket& recvData);
         void HandleCancelMountAuraOpcode(WorldPacket& recvData);
         void HandleSelfResOpcode(WorldPacket& recvData);
-        void HandleComplainOpcode(WorldPacket& recvData);
+        void HandleComplaintOpcode(WorldPackets::Ticket::Complaint& packet);
+        void HandleSupportTicketSubmitSuggestionOpcode(WorldPackets::Ticket::SupportTicketSubmitSuggestion& packet);
+        void HandleSupportTicketSubmitBugOpcode(WorldPackets::Ticket::SupportTicketSubmitBug& packet);
+        void HandleSupportTicketSubmitComplaintOpcode(WorldPackets::Ticket::SupportTicketSubmitComplaint& packet);
         void HandleRequestPetInfoOpcode(WorldPacket& recvData);
 
         // Socket gem
@@ -1216,7 +1243,7 @@ class TC_GAME_API WorldSession
         void HandleTransmogrifyItems(WorldPackets::Item::TransmogrifyItems& packet);
 
         // Reforge
-        void HandleReforgeItemOpcode(WorldPacket& recvData);
+        void HandleReforgeItemOpcode(WorldPackets::Reforge::ReforgeItem& packet);
         void SendReforgeResult(bool success);
 
         // Miscellaneous

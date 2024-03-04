@@ -21,6 +21,7 @@
 #include "Define.h"
 #include "EnumFlag.h"
 #include "ObjectGuid.h"
+#include <any>
 #include <vector>
 
 class Item;
@@ -151,10 +152,13 @@ enum SpellValueMod : uint8
     SPELLVALUE_DURATION
 };
 
-enum SpellFacingFlags
+enum class SpellFacingCasterFlags : uint32
 {
-    SPELL_FACING_FLAG_INFRONT = 0x1
+    None    = 0x0,
+    Infront = 0x1
 };
+
+DEFINE_ENUM_FLAG(SpellFacingCasterFlags);
 
 enum TriggerCastFlags : uint32
 {
@@ -167,7 +171,7 @@ enum TriggerCastFlags : uint32
     TRIGGERED_IGNORE_CAST_IN_PROGRESS               = 0x00000020,   //! Will not check if a current cast is in progress
     TRIGGERED_IGNORE_COMBO_POINTS                   = 0x00000040,   //! Will ignore combo point requirement
     TRIGGERED_CAST_DIRECTLY                         = 0x00000080,   //! In Spell::prepare, will be cast directly without setting containers for executed spell
-    TRIGGERED_IGNORE_AURA_INTERRUPT_FLAGS           = 0x00000100,   //! Will ignore interruptible aura's at cast
+    // reuse                                        = 0x00000100,
     TRIGGERED_IGNORE_SET_FACING                     = 0x00000200,   //! Will not adjust facing to target (if any)
     TRIGGERED_IGNORE_SHAPESHIFT                     = 0x00000400,   //! Will ignore shapeshift checks
     TRIGGERED_IGNORE_CASTER_AURASTATE               = 0x00000800,   //! Will ignore caster aura states including combat requirements and death state
@@ -185,6 +189,8 @@ enum TriggerCastFlags : uint32
     TRIGGERED_IGNORE_TARGET_CHECK                   = 0x00100000,   //! Will ignore most target checks (mostly DBC target checks)
     TRIGGERED_FULL_DEBUG_MASK                       = 0xFFFFFFFF
 };
+
+DEFINE_ENUM_FLAG(TriggerCastFlags);
 
 struct TC_GAME_API CastSpellExtraArgs
 {
@@ -204,6 +210,7 @@ struct TC_GAME_API CastSpellExtraArgs
     CastSpellExtraArgs& SetOriginalCaster(ObjectGuid const& guid) { OriginalCaster = guid; return *this; }
     CastSpellExtraArgs& AddSpellMod(SpellValueMod mod, int32 val) { SpellValueOverrides.AddMod(mod, val); return *this; }
     CastSpellExtraArgs& AddSpellBP0(int32 val) { return AddSpellMod(SPELLVALUE_BASE_POINT0, val); } // because i don't want to type SPELLVALUE_BASE_POINT0 300 times
+    CastSpellExtraArgs& SetCustomArg(std::any customArg) { CustomArg = std::move(customArg); return *this; }
 
     TriggerCastFlags TriggerFlags = TRIGGERED_NONE;
     Item* CastItem = nullptr;
@@ -223,6 +230,7 @@ struct TC_GAME_API CastSpellExtraArgs
 
             std::vector<std::pair<SpellValueMod, int32>> data;
     } SpellValueOverrides;
+    std::any CustomArg;
 
     CastSpellExtraArgs(CastSpellExtraArgs const&) = delete;
     CastSpellExtraArgs(CastSpellExtraArgs&&) = delete;

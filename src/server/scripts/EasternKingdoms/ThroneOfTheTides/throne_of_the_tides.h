@@ -21,8 +21,10 @@
 #include "CreatureAIImpl.h"
 #include "Position.h"
 
+namespace ThroneOfTheTides
+{
 #define TotTScriptName "instance_throne_of_the_tides"
-#define DataHeader "TOTT"
+constexpr char const* DataHeader = "TOTT";
 
 uint32 const EncounterCount = 4;
 
@@ -109,7 +111,6 @@ enum TotTCreatureIds
 
 enum TotTGameObjectIds
 {
-    GO_TEMP_FALLING_ROCKS                   = 202742,
     GO_DOODAD_ABYSSAL_MAW_DOOR_1            = 204338,
     GO_DOODAD_ABYSSAL_MAW_DOOR_2            = 204339,
     GO_DOODAD_ABYSSAL_MAW_DOOR_4            = 204341,
@@ -243,5 +244,6 @@ inline AI* GetThroneOfTheTodesAI(T* obj)
 }
 
 #define RegisterThroneOfTheTidesCreatureAI(ai_name) RegisterCreatureAIWithFactory(ai_name, GetThroneOfTheTodesAI)
+}
 
 #endif // THRONEOFTHETIDES_H_

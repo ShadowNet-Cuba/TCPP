@@ -80,7 +80,6 @@ TC_GAME_API extern DBCStorage <GameObjectDisplayInfoEntry>   sGameObjectDisplayI
 TC_GAME_API extern DBCStorage <GemPropertiesEntry>           sGemPropertiesStore;
 TC_GAME_API extern DBCStorage <GlyphPropertiesEntry>         sGlyphPropertiesStore;
 TC_GAME_API extern DBCStorage <GlyphSlotEntry>               sGlyphSlotStore;
-
 TC_GAME_API extern DBCStorage <GtBarberShopCostBaseEntry>    sGtBarberShopCostBaseStore;
 TC_GAME_API extern DBCStorage <GtCombatRatingsEntry>         sGtCombatRatingsStore;
 TC_GAME_API extern DBCStorage <GtChanceToMeleeCritBaseEntry> sGtChanceToMeleeCritBaseStore;
@@ -139,6 +138,7 @@ TC_GAME_API extern DBCStorage <LightEntry>                   sLightStore;
 TC_GAME_API extern MapDifficultyMap                          sMapDifficultyMap;
 TC_GAME_API extern DBCStorage <MovieEntry>                   sMovieStore;
 TC_GAME_API extern DBCStorage <OverrideSpellDataEntry>       sOverrideSpellDataStore;
+TC_GAME_API extern DBCStorage <PlayerConditionEntry>         sPlayerConditionStore;
 TC_GAME_API extern DBCStorage <PowerDisplayEntry>            sPowerDisplayStore;
 TC_GAME_API extern DBCStorage <QuestSortEntry>               sQuestSortStore;
 TC_GAME_API extern DBCStorage <QuestXPEntry>                 sQuestXPStore;
@@ -229,7 +229,7 @@ public:
     static uint32 GetMaxLevelForExpansion(uint32 expansion);
     ContentLevels GetContentLevelsForMapAndZone(uint32 mapid, uint32 zoneId);
     static bool IsTotemCategoryCompatibleWith(uint32 itemTotemCategoryId, uint32 requiredTotemCategoryId);
-    void Zone2MapCoordinates(float &x, float &y, uint32 zone);
+    bool Zone2MapCoordinates(float &x, float &y, uint32 zone) const;
     void Map2ZoneCoordinates(float &x, float &y, uint32 zone);
     MapDifficulty const* GetMapDifficultyData(uint32 mapId, Difficulty difficulty);
     MapDifficulty const* GetDownscaledMapDifficultyData(uint32 mapId, Difficulty &difficulty);

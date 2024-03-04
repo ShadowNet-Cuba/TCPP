@@ -30,6 +30,7 @@
 #include "SharedDefines.h"
 #include "Timer.h"
 
+#include <array>
 #include <atomic>
 #include <list>
 #include <map>
@@ -74,7 +75,7 @@ enum ShutdownExitCode : uint32
 };
 
 /// Timers for different object refresh rates
-enum WorldTimers
+enum WorldTimers : uint8
 {
     WUPDATE_AUCTIONS,
     WUPDATE_AUCTIONS_PENDING,
@@ -94,7 +95,7 @@ enum WorldTimers
 };
 
 /// Configuration elements
-enum WorldBoolConfigs
+enum WorldBoolConfigs : uint8
 {
     CONFIG_DURABILITY_LOSS_IN_PVP = 0,
     CONFIG_ADDON_CHANNEL,
@@ -188,7 +189,7 @@ enum WorldBoolConfigs
     BOOL_CONFIG_VALUE_COUNT
 };
 
-enum WorldFloatConfigs
+enum WorldFloatConfigs : uint8
 {
     CONFIG_GROUP_XP_DISTANCE = 0,
     CONFIG_MAX_RECRUIT_A_FRIEND_DISTANCE,
@@ -213,7 +214,7 @@ enum WorldFloatConfigs
     FLOAT_CONFIG_VALUE_COUNT
 };
 
-enum WorldIntConfigs
+enum WorldIntConfigs : uint8
 {
     CONFIG_COMPRESSION = 0,
     CONFIG_INTERVAL_SAVE,
@@ -422,7 +423,7 @@ enum WorldIntConfigs
 };
 
 /// Server rates
-enum Rates
+enum Rates : uint8
 {
     RATE_HEALTH = 0,
     RATE_POWER_MANA,
@@ -551,6 +552,8 @@ enum RealmZone
     REALM_ZONE_CN3_7         = 36,                          // basic-Latin at create, any at login
     REALM_ZONE_CN5_8         = 37                           // basic-Latin at create, any at login
 };
+
+struct PersistentWorldVariable;
 
 /// Storage class for commands issued for delayed execution
 struct TC_GAME_API CliCommandHolder
@@ -744,9 +747,19 @@ class TC_GAME_API World
             return index < INT_CONFIG_VALUE_COUNT ? m_int_configs[index] : 0;
         }
 
-        void setWorldState(uint32 index, uint64 value);
-        uint64 getWorldState(uint32 index) const;
-        void LoadWorldStates();
+        static PersistentWorldVariable const NextCurrencyResetTimeVarId;                    // Next arena distribution time
+        static PersistentWorldVariable const NextWeeklyQuestResetTimeVarId;                 // Next weekly quest reset time
+        static PersistentWorldVariable const NextBGRandomDailyResetTimeVarId;               // Next daily BG reset time
+        static PersistentWorldVariable const CharacterDatabaseCleaningFlagsVarId;           // Cleaning Flags
+        static PersistentWorldVariable const NextGuildDailyResetTimeVarId;                  // Next guild cap reset time
+        static PersistentWorldVariable const NextMonthlyQuestResetTimeVarId;                // Next monthly quest reset time
+        static PersistentWorldVariable const NextDailyQuestResetTimeVarId;                  // Next daily quest reset time
+        static PersistentWorldVariable const NextOldCalendarEventDeletionTimeVarId;         // Next daily calendar deletions of old events time
+        static PersistentWorldVariable const NextGuildWeeklyResetTimeVarId;                 // Next guild week reset time
+
+        int32 GetPersistentWorldVariable(PersistentWorldVariable const& var) const;
+        void SetPersistentWorldVariable(PersistentWorldVariable const& var, int32 value);
+        void LoadPersistentWorldVariables();
 
         /// Are we on a "Player versus Player" server?
         bool IsPvPRealm() const;
@@ -787,8 +800,8 @@ class TC_GAME_API World
         void UpdateAreaDependentAuras();
 
         uint32 GetCleaningFlags() const { return m_CleaningFlags; }
-        void   SetCleaningFlags(uint32 flags) { m_CleaningFlags = flags; }
-        void   ResetEventSeasonalQuests(uint16 event_id);
+        void SetCleaningFlags(uint32 flags) { m_CleaningFlags = flags; }
+        void ResetEventSeasonalQuests(uint16 event_id, time_t eventStartTime);
 
         void ReloadRBAC();
 
@@ -830,7 +843,7 @@ class TC_GAME_API World
 
         bool m_isClosed;
 
-        IntervalTimer m_timers[WUPDATE_COUNT];
+        std::array<IntervalTimer, WUPDATE_COUNT> m_timers;
         time_t mail_timer;
         time_t mail_timer_expires;
 
@@ -844,12 +857,11 @@ class TC_GAME_API World
 
         std::string m_newCharString;
 
-        float rate_values[MAX_RATES];
-        uint32 m_int_configs[INT_CONFIG_VALUE_COUNT];
-        bool m_bool_configs[BOOL_CONFIG_VALUE_COUNT];
-        float m_float_configs[FLOAT_CONFIG_VALUE_COUNT];
-        typedef std::map<uint32, uint64> WorldStatesMap;
-        WorldStatesMap m_worldstates;
+        std::array<float, MAX_RATES> rate_values;
+        std::array<uint32, INT_CONFIG_VALUE_COUNT> m_int_configs;
+        std::array<bool, BOOL_CONFIG_VALUE_COUNT> m_bool_configs;
+        std::array<float, FLOAT_CONFIG_VALUE_COUNT> m_float_configs;
+        std::unordered_map<std::string, int32> m_worldVariables;
         uint32 m_playerLimit;
         AccountTypes m_allowedSecurityLevel;
         LocaleConstant m_defaultDbcLocale;                     // from config for one from loaded DBC locales

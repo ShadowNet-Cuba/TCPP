@@ -36,9 +36,11 @@
 #include "ScriptMgr.h"
 #include "Spell.h"
 #include "SpellAuraEffects.h"
+#include "SpellCastRequest.h"
 #include "SpellMgr.h"
 #include "SpellPackets.h"
 #include "Totem.h"
+#include "TotemPackets.h"
 #include "World.h"
 #include "WorldPacket.h"
 
@@ -102,7 +104,7 @@ void WorldSession::HandleUseItemOpcode(WorldPackets::Spells::UseItem& packet)
         return;
 
     if (user->CanRequestSpellCast(spellInfo))
-        user->RequestSpellCast(PendingSpellCastRequest(std::move(packet.Cast), SpellCastRequestItemData(packet.PackSlot, packet.Slot, packet.CastItem)), spellInfo);
+        user->RequestSpellCast(std::make_unique<PendingSpellCastRequest>(std::move(packet.Cast), SpellCastRequestItemData(packet.PackSlot, packet.Slot, packet.CastItem)), spellInfo);
 }
 
 void WorldSession::HandleOpenItemOpcode(WorldPacket& recvPacket)
@@ -273,7 +275,7 @@ void WorldSession::HandleCastSpellOpcode(WorldPackets::Spells::CastSpell& cast)
         return;
 
     if (mover->CanRequestSpellCast(spellInfo))
-        mover->RequestSpellCast(PendingSpellCastRequest(std::move(cast.Cast)), spellInfo);
+        mover->RequestSpellCast(std::make_unique<PendingSpellCastRequest>(std::move(cast.Cast)), spellInfo);
     else if (mover->IsPlayer())
         Spell::SendCastResult(mover->ToPlayer(), spellInfo, cast.Cast.CastID, SPELL_FAILED_SPELL_IN_PROGRESS);
 }
@@ -415,26 +417,20 @@ void WorldSession::HandleCancelChanneling(WorldPacket& recvData)
     mover->InterruptSpell(CURRENT_CHANNELED_SPELL);
 }
 
-void WorldSession::HandleTotemDestroyed(WorldPacket& recvPacket)
+void WorldSession::HandleTotemDestroyed(WorldPackets::Totem::TotemDestroyed& packet)
 {
     // ignore for remote control state
     if (_player->IsCharming())
         return;
 
-    uint8 slotId;
-    uint64 guid;
-    recvPacket >> slotId;
-    recvPacket >> guid;
-
-    ++slotId;
-    if (slotId >= MAX_TOTEM_SLOT)
+    if (packet.Slot +1 >= MAX_TOTEM_SLOT)
         return;
 
-    if (!_player->m_SummonSlot[slotId])
+    if (!_player->m_SummonSlot[packet.Slot + 1])
         return;
 
-    Creature* totem = ObjectAccessor::GetCreature(*GetPlayer(), _player->m_SummonSlot[slotId]);
-    if (totem && totem->IsTotem() && totem->GetGUID() == guid)
+    Creature* totem = ObjectAccessor::GetCreature(*GetPlayer(), _player->m_SummonSlot[packet.Slot + 1]);
+    if (totem && totem->IsTotem() && totem->GetGUID() == packet.TotemGUID)
         totem->ToTotem()->UnSummon();
 }
 

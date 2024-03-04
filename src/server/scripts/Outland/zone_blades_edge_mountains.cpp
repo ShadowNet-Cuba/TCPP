@@ -41,6 +41,8 @@ EndContentData */
 #include "SpellScript.h"
 #include "TemporarySummon.h"
 
+namespace BladesEdgeMountains
+{
 /*######
 ## npc_nether_drake
 ######*/
@@ -896,7 +898,7 @@ class go_simon_cluster : public GameObjectScript
                 if (Creature* bunny = me->FindNearestCreature(NPC_SIMON_BUNNY, 12.0f, true))
                     bunny->AI()->SetData(me->GetEntry(), 0);
 
-                player->CastSpell(player, me->GetGOInfo()->goober.spellId, true);
+                player->CastSpell(player, me->GetGOInfo()->goober.spell, true);
                 me->AddUse();
                 return true;
             }
@@ -1051,9 +1053,11 @@ class spell_oscillating_field : public SpellScriptLoader
             return new spell_oscillating_field_SpellScript();
         }
 };
+}
 
 void AddSC_blades_edge_mountains()
 {
+    using namespace BladesEdgeMountains;
     new npc_nether_drake();
     new npc_daranelle();
     new go_legion_obelisk();

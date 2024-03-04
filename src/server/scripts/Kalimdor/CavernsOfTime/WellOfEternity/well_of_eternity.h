@@ -21,33 +21,43 @@
 #include "CreatureAIImpl.h"
 #include "Define.h"
 
-#define DataHeader "WOE"
+namespace WellOfEternity
+{
+constexpr char const* DataHeader = "WOE";
 #define WOEScriptName "instance_well_of_eternity"
 
-uint32 const EncounterCount = 3;
+    uint32 const EncounterCount = 3;
 
-enum WOEDataTypes
-{
-    // Bosses
-    DATA_PEROTHARN              = 0,
-    DATA_QUEEN_AZSHARA          = 1,
-    DATA_MANNOROTH_AND_VAROTHEN = 2
-};
+    enum WOEDataTypes
+    {
+        // Bosses
+        BOSS_PEROTHARN = 0,
+        BOSS_QUEEN_AZSHARA = 1,
+        BOSS_MANNOROTH_AND_VAROTHEN = 2,
 
-enum WOECreatures
-{
-};
+        // Misc
+        DATA_WOE_COURTYARD_DOOR01,
+    };
 
-enum WOEGameObjectIds
-{
-};
+    enum WOECreatures
+    {
+        NPC_PEROTHARN = 55085
+    };
 
-template<class AI>
-AI* GetWellOfEternityAI(Creature* creature)
-{
-    return GetInstanceAI<AI>(creature, WOEScriptName);
-}
+    enum WOEGameObjectIds
+    {
+        GO_WOE_COURTYARD_DOOR01 = 210084,
+        GO_LARGE_FIREWALL_DOOR = 210234,
+        GO_SMALL_FIREWALL_DOOR = 210130,
+    };
+
+    template<class AI>
+    AI* GetWellOfEternityAI(Creature* creature)
+    {
+        return GetInstanceAI<AI>(creature, WOEScriptName);
+    }
 
 #define RegisterWellOfEternityCreatureAI(ai_name) RegisterCreatureAIWithFactory(ai_name, GetWellOfEternityAI)
+}
 
 #endif // DEF_WELLOFETERNITY_H

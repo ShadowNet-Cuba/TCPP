@@ -24,6 +24,7 @@
 #include "ScriptMgr.h"
 #include "Creature.h"
 #include "GameObject.h"
+#include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "Random.h"
@@ -33,10 +34,15 @@
 #include "SpellMgr.h"
 #include "SpellScript.h"
 
+namespace Spells::Warlock
+{
 enum WarlockSpells
 {
     SPELL_WARLOCK_AFTERMATH_STUN                    = 85387,
     SPELL_WARLOCK_BANE_OF_DOOM_EFFECT               = 18662,
+    SPELL_WARLOCK_BANE_OF_HAVOC                     = 80240,
+    SPELL_WARLOCK_BANE_OF_HAVOC_TRACKING_AURA       = 85466,
+    SPELL_WARLOCK_BANE_OF_HAVOC_DAMAGE              = 85455,
     SPELL_WARLOCK_BURNING_EMBERS_DAMAGE             = 85421,
     SPELL_WARLOCK_CREATE_HEALTHSTONE                = 34130,
     SPELL_WARLOCK_CORRUPTION_TRIGGERED              = 87389,
@@ -93,6 +99,7 @@ enum WarlockSpells
     SPELL_WARLOCK_SEED_OF_CORRUPTION_VISUAL         = 37826,
     SPELL_WARLOCK_SIPHON_LIFE_HEAL                  = 63106,
     SPELL_WARLOCK_SHADOW_WARD                       = 6229,
+    SPELL_WARLOCK_SHADOWFLAME_PERIODIC              = 47960,
     SPELL_WARLOCK_SOULBURN_HEALTHSTONE              = 79437,
     SPELL_WARLOCK_SOULBURN_DEMONIC_CIRCLE           = 79438,
     SPELL_WARLOCK_SOULBURN_SEARING_PAIN             = 79440,
@@ -113,11 +120,12 @@ enum WarlockSpellIcons
 {
     WARLOCK_ICON_ID_IMPROVED_LIFE_TAP               = 208,
     WARLOCK_ICON_ID_MANA_FEED                       = 1982,
-	WARLOCK_ICON_ID_DEATHS_EMBRACE                  = 3223,
-	WARLOCK_ICON_ID_SOUL_SIPHON                     = 5001,
+    WARLOCK_ICON_ID_DEATHS_EMBRACE                  = 3223,
+    WARLOCK_ICON_ID_SOUL_SIPHON                     = 5001,
     WARLOCK_ICON_ID_SOULBURN_SEED_OF_CORRUPTION     = 1932,
     WARLOCK_ICON_ID_FIRE_AND_BRIMSTONE              = 3173,
-    WARLOCK_ICON_ID_JINX                            = 5002
+    WARLOCK_ICON_ID_JINX                            = 5002,
+    WARLOCK_ICON_ID_GLYPH_OF_FEAR                   = 98
 };
 
 enum MiscSpells
@@ -1658,9 +1666,158 @@ class spell_warl_decimation : public AuraScript
     }
 };
 
+// 5782 - Fear
+class spell_warl_fear : public SpellScript
+{
+    void HandleGlyphEffect(WorldObject*& target)
+    {
+        if (!GetCaster()->GetDummyAuraEffect(SPELLFAMILY_WARLOCK, WARLOCK_ICON_ID_GLYPH_OF_FEAR, EFFECT_0))
+            target = nullptr;
+    }
+
+    void Register() override
+    {
+        OnObjectTargetSelect.Register(&spell_warl_fear::HandleGlyphEffect, EFFECT_2, TARGET_UNIT_TARGET_ENEMY);
+    }
+};
+
+// 56244 - Glyph of Fear
+class spell_warl_glyph_of_fear : public AuraScript
+{
+    void HandleCooldownMod(AuraEffect const* aurEff, SpellModifier*& spellMod)
+    {
+        if (!spellMod)
+        {
+            spellMod = new SpellModifier(GetAura());
+            spellMod->op = SpellModOp::Cooldown;
+            spellMod->type = SPELLMOD_FLAT;
+            spellMod->spellId = GetId();
+            spellMod->mask = GetSpellInfo()->Effects[aurEff->GetEffIndex()].SpellClassMask;
+        }
+        spellMod->value = aurEff->GetAmount() * IN_MILLISECONDS;
+    }
+
+    void Register() override
+    {
+        DoEffectCalcSpellMod.Register(&spell_warl_glyph_of_fear::HandleCooldownMod, EFFECT_0, SPELL_AURA_DUMMY);
+    }
+};
+
+// 47897 - Shadowflame
+class spell_warl_shadowflame : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_WARLOCK_SHADOWFLAME_PERIODIC });
+    }
+
+    void HandlePeriodicDamageEffect(SpellEffIndex /*effIndex*/)
+    {
+        if (Unit* caster = GetCaster())
+            caster->CastSpell(GetHitUnit(), SPELL_WARLOCK_SHADOWFLAME_PERIODIC, true);
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget.Register(&spell_warl_shadowflame::HandlePeriodicDamageEffect, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
+    }
+};
+
+// 80240 - Bane of Havoc
+class spell_warl_bane_of_havoc : public AuraScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_WARLOCK_BANE_OF_HAVOC_TRACKING_AURA });
+    }
+
+    void ApplyTrackingAura(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        if (Unit* caster = GetCaster())
+            caster->CastSpell(nullptr, SPELL_WARLOCK_BANE_OF_HAVOC_TRACKING_AURA, CastSpellExtraArgs(TRIGGERED_FULL_MASK));
+    }
+
+    void Register() override
+    {
+        AfterEffectApply.Register(&spell_warl_bane_of_havoc::ApplyTrackingAura, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
+    }
+};
+
+// 85466 - Bane of Havoc
+class spell_warl_bane_of_havoc_tracking_aura : public AuraScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_WARLOCK_BANE_OF_HAVOC_DAMAGE, SPELL_WARLOCK_BANE_OF_HAVOC });
+    }
+
+    void StoreTrackingAuraTargetGuid(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        for (Aura const* aura : GetTarget()->GetSingleCastAuras())
+            if (aura->GetId() == SPELL_WARLOCK_BANE_OF_HAVOC && aura->GetCasterGUID() == GetTarget()->GetGUID())
+                if (Unit const* owner = aura->GetUnitOwner())
+                    _trackedTargetGUID = owner->GetGUID();
+    }
+
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        // Nothing to track
+        if (_trackedTargetGUID.IsEmpty() || !eventInfo.GetProcTarget() || eventInfo.GetProcTarget()->GetGUID() == _trackedTargetGUID)
+            return false;
+
+        // No damage to share
+        if (!eventInfo.GetDamageInfo() || eventInfo.GetDamageInfo()->GetDamage() == 0)
+            return false;
+
+        if (!PrepareProc(eventInfo))
+        {
+            _trackedTargetGUID = ObjectGuid::Empty;
+            _trackedTarget = nullptr;
+            _trackedDamage = 0;
+            return false;
+        }
+
+        return true;
+    }
+
+    void HandleProc(AuraEffect const* /*aurEff*/, ProcEventInfo& /*eventInfo*/)
+    {
+        GetTarget()->CastSpell(_trackedTarget, SPELL_WARLOCK_BANE_OF_HAVOC_DAMAGE, CastSpellExtraArgs(TRIGGERED_FULL_MASK).AddSpellBP0(_trackedDamage));
+    }
+
+    void Register() override
+    {
+        AfterEffectApply.Register(&spell_warl_bane_of_havoc_tracking_aura::StoreTrackingAuraTargetGuid, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL_OR_REAPPLY_MASK);
+        DoCheckProc.Register(&spell_warl_bane_of_havoc_tracking_aura::CheckProc);
+        OnEffectProc.Register(&spell_warl_bane_of_havoc_tracking_aura::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
+    }
+private:
+    ObjectGuid _trackedTargetGUID;
+    Unit* _trackedTarget = nullptr;
+    int32 _trackedDamage = 0;
+
+    bool PrepareProc(ProcEventInfo const& eventInfo)
+    {
+        _trackedTarget = ObjectAccessor::GetUnit(*GetTarget(), _trackedTargetGUID);
+        if (!_trackedTarget)
+            return false;
+
+        AuraEffect const* baneEffect = _trackedTarget->GetAuraEffect(SPELL_WARLOCK_BANE_OF_HAVOC, EFFECT_0, GetCasterGUID());
+        if (!baneEffect)
+            return false;
+
+        _trackedDamage = CalculatePct(eventInfo.GetDamageInfo()->GetDamage(), baneEffect->GetAmount());
+        return true;
+    }
+};
+}
+
 void AddSC_warlock_spell_scripts()
 {
+    using namespace Spells::Warlock;
     RegisterSpellScript(spell_warl_aftermath);
+    RegisterSpellScript(spell_warl_bane_of_havoc);
+    RegisterSpellScript(spell_warl_bane_of_havoc_tracking_aura);
     RegisterSpellScript(spell_warl_bane_of_doom);
     RegisterSpellScript(spell_warl_banish);
     RegisterSpellScript(spell_warl_burning_embers);
@@ -1676,9 +1833,11 @@ void AddSC_warlock_spell_scripts()
     RegisterSpellScript(spell_warl_drain_life);
     RegisterSpellScript(spell_warl_drain_soul);
     RegisterSpellScript(spell_warl_everlasting_affliction);
+    RegisterSpellScript(spell_warl_fear);
     RegisterSpellScript(spell_warl_fel_flame);
     RegisterSpellScript(spell_warl_fel_synergy);
     RegisterSpellScript(spell_warl_fel_armor);
+    RegisterSpellScript(spell_warl_glyph_of_fear);
     RegisterSpellScript(spell_warl_glyph_of_shadowflame);
     RegisterSpellAndAuraScriptPair(spell_warl_haunt, spell_warl_haunt_AuraScript);
     RegisterSpellScript(spell_warl_health_funnel);
@@ -1695,6 +1854,7 @@ void AddSC_warlock_spell_scripts()
     RegisterSpellScript(spell_warl_seed_of_corruption_aoe);
     RegisterSpellScript(spell_warl_shadow_trance_proc);
     RegisterSpellScript(spell_warl_shadow_ward);
+    RegisterSpellScript(spell_warl_shadowflame);
     RegisterSpellScript(spell_warl_soulburn);
     RegisterSpellScript(spell_warl_soul_harvest);
     RegisterSpellScript(spell_warl_soul_leech);

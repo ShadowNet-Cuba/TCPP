@@ -30,6 +30,8 @@
 #include "SpellScript.h"
 #include "TemporarySummon.h"
 
+namespace Spells::Priest
+{
 enum PriestSpells
 {
     SPELL_PRIEST_ABSOLUTION                         = 33167,
@@ -116,13 +118,15 @@ enum PriestSpellIcons
     PRIEST_ICON_ID_IMPROVED_MIND_BLAST              = 95,
     PRIEST_ICON_ID_MIND_MELT                        = 3139,
     PRIEST_ICON_ID_SHADOW_ORB                       = 4941,
+    PRIEST_ICON_ID_GLYPH_OF_PSYCHIC_SCREAM          = 1488,
     PRIEST_ICON_ID_GLYPH_OF_SHADOW_WORD_DEATH       = 1980,
     PRIEST_ICON_ID_IMPROVED_DEVOURING_PLAGUE        = 3790
 };
 
 enum MiscSpells
 {
-    SPELL_GEN_REPLENISHMENT                         = 57669
+    SPELL_GEN_REPLENISHMENT                         = 57669,
+    SPELL_GEN_INTERRUPT                             = 32747
 };
 
 class PowerCheck
@@ -1804,8 +1808,49 @@ class spell_pri_devouring_plague : public AuraScript
     }
 };
 
+// 8122 - Psychic Scream
+class spell_pri_psychic_scream : public SpellScript
+{
+    void FilterGlyphTargets(std::list<WorldObject*>& targets)
+    {
+        if (!GetCaster()->GetDummyAuraEffect(SPELLFAMILY_PRIEST, PRIEST_ICON_ID_GLYPH_OF_PSYCHIC_SCREAM, EFFECT_0))
+            targets.clear();
+    }
+
+    void Register() override
+    {
+        OnObjectAreaTargetSelect.Register(&spell_pri_psychic_scream::FilterGlyphTargets, EFFECT_2, TARGET_UNIT_SRC_AREA_ENEMY);
+    }
+};
+
+// 15487 - Silence
+class spell_pri_silence : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfi*/) override
+    {
+        return ValidateSpellInfo({ SPELL_GEN_INTERRUPT });
+    }
+
+    void HandleCreatureInterrupt(SpellEffIndex /*effIndex*/)
+    {
+        Creature* target = GetHitCreature();
+        if (!target)
+            return;
+
+        if (Unit* caster = GetCaster())
+            caster->CastSpell(target, SPELL_GEN_INTERRUPT, true);
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget.Register(&spell_pri_silence::HandleCreatureInterrupt, EFFECT_0, SPELL_EFFECT_APPLY_AURA);
+    }
+};
+}
+
 void AddSC_priest_spell_scripts()
 {
+    using namespace Spells::Priest;
     RegisterSpellScript(spell_pri_archangel);
     RegisterSpellScript(spell_pri_atonement);
     RegisterSpellScript(spell_pri_atonement_heal);
@@ -1840,6 +1885,7 @@ void AddSC_priest_spell_scripts()
     RegisterSpellScript(spell_pri_pain_and_suffering_proc);
     RegisterSpellScript(spell_pri_penance);
     RegisterSpellScript(spell_pri_phantasm);
+    RegisterSpellScript(spell_pri_psychic_scream);
     RegisterSpellScript(spell_power_word_barrier);
     RegisterSpellAndAuraScriptPair(spell_pri_power_word_shield, spell_pri_power_word_shield_AuraScript);
     RegisterSpellScript(spell_pri_prayer_of_mending_heal);
@@ -1852,6 +1898,7 @@ void AddSC_priest_spell_scripts()
     RegisterSpellScript(spell_pri_renew);
     RegisterSpellScript(spell_pri_shadow_word_death);
     RegisterSpellScript(spell_pri_shadowform);
+    RegisterSpellScript(spell_pri_silence);
     RegisterSpellScript(spell_pri_vampiric_embrace);
     RegisterSpellScript(spell_pri_vampiric_embrace_target);
     RegisterSpellScript(spell_pri_vampiric_touch);

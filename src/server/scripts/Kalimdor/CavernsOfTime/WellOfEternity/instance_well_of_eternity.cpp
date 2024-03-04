@@ -19,19 +19,25 @@
 #include "InstanceScript.h"
 #include "well_of_eternity.h"
 
+namespace WellOfEternity
+{
 ObjectData const creatureData[] =
 {
-    { 0, 0  } // END
+    { NPC_PEROTHARN,    BOSS_PEROTHARN  },
+    { 0,                0               } // END
 };
 
 ObjectData const gameobjectData[] =
 {
-    { 0, 0 } // END
+    { GO_WOE_COURTYARD_DOOR01,  DATA_WOE_COURTYARD_DOOR01   },
+    { 0,                        0                           } // END
 };
 
 DoorData const doorData[] =
 {
-    { 0, 0, DOOR_TYPE_ROOM } // END
+    { GO_LARGE_FIREWALL_DOOR,   BOSS_PEROTHARN, DOOR_TYPE_ROOM },
+    { GO_SMALL_FIREWALL_DOOR,   BOSS_PEROTHARN, DOOR_TYPE_ROOM },
+    { 0,                        0,              DOOR_TYPE_ROOM } // END
 };
 
 class instance_well_of_eternity : public InstanceMapScript
@@ -55,8 +61,10 @@ public:
         return new instance_well_of_eternity_InstanceMapScript(map);
     }
 };
+}
 
 void AddSC_instance_well_of_eternity()
 {
+    using namespace WellOfEternity;
     new instance_well_of_eternity();
 }

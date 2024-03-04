@@ -27,7 +27,6 @@
 #include "InstanceScript.h"
 #include "Log.h"
 #include "Map.h"
-#include "MapInstanced.h"
 #include "MapManager.h"
 #include "ObjectMgr.h"
 #include "Player.h"
@@ -228,12 +227,6 @@ time_t InstanceSave::GetResetTimeForDB()
         return GetResetTime();
 }
 
-// to cache or not to cache, that is the question
-InstanceTemplate const* InstanceSave::GetTemplate()
-{
-    return sObjectMgr->GetInstanceTemplate(m_mapid);
-}
-
 MapEntry const* InstanceSave::GetMapEntry()
 {
     return sMapStore.LookupEntry(m_mapid);
@@ -358,7 +351,7 @@ void InstanceSaveManager::LoadResetTimes()
             MapDifficulty const* mapDiff = sDBCManager.GetMapDifficultyData(mapid, difficulty);
             if (!mapDiff)
             {
-                TC_LOG_ERROR("misc", "InstanceSaveManager::LoadResetTimes: invalid mapid(%u)/difficulty(%u) pair in instance_reset!", mapid, difficulty);
+                TC_LOG_ERROR("misc", "InstanceSaveManager::LoadResetTimes: invalid mapid(%u)/difficulty(%u) pair in instance_reset!", mapid, uint32(difficulty));
 
                 CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_GLOBAL_INSTANCE_RESETTIME);
                 stmt->setUInt16(0, uint16(mapid));
@@ -394,7 +387,7 @@ void InstanceSaveManager::LoadResetTimes()
             continue;
 
         // the reset_delay must be at least one day
-        uint32 period = uint32(((mapDiff->resetTime * sWorld->getRate(RATE_INSTANCE_RESET_TIME))/DAY) * DAY);
+        uint32 period = uint32(((mapDiff->resetTime * sWorld->getRate(RATE_INSTANCE_RESET_TIME)) / float(DAY)) * float(DAY));
         if (period < DAY)
             period = DAY;
 
@@ -451,7 +444,7 @@ time_t InstanceSaveManager::GetSubsequentResetTime(uint32 mapid, Difficulty diff
     }
 
     time_t diff = sWorld->getIntConfig(CONFIG_INSTANCE_RESET_TIME_HOUR) * HOUR;
-    time_t period = uint32(((mapDiff->resetTime * sWorld->getRate(RATE_INSTANCE_RESET_TIME)) / DAY) * DAY);
+    time_t period = uint32(((mapDiff->resetTime * sWorld->getRate(RATE_INSTANCE_RESET_TIME)) / float(DAY)) * float(DAY));
     if (period < DAY)
         period = DAY;
 
@@ -597,8 +590,8 @@ void InstanceSaveManager::_ResetSave(InstanceSaveHashMap::iterator &itr)
 void InstanceSaveManager::_ResetInstance(uint32 mapid, uint32 instanceId)
 {
     TC_LOG_DEBUG("maps", "InstanceSaveMgr::_ResetInstance %u, %u", mapid, instanceId);
-    Map const* map = sMapMgr->CreateBaseMap(mapid);
-    if (!map->Instanceable())
+    MapEntry const* map = sMapStore.LookupEntry(mapid);
+    if (!map->IsDungeon())
         return;
 
     InstanceSaveHashMap::iterator itr = m_instanceSaveById.find(instanceId);
@@ -607,13 +600,11 @@ void InstanceSaveManager::_ResetInstance(uint32 mapid, uint32 instanceId)
 
     DeleteInstanceFromDB(instanceId);                       // even if save not loaded
 
-    Map* iMap = ((MapInstanced*)map)->FindInstanceMap(instanceId);
-
-    if (iMap && iMap->IsDungeon())
-        ((InstanceMap*)iMap)->Reset(INSTANCE_RESET_RESPAWN_DELAY);
+    Map* iMap = sMapMgr->FindMap(mapid, instanceId);
 
     if (iMap)
     {
+        ((InstanceMap*)iMap)->Reset(INSTANCE_RESET_RESPAWN_DELAY);
         iMap->DeleteRespawnTimes();
         iMap->DeleteCorpseData();
     }
@@ -689,28 +680,23 @@ void InstanceSaveManager::_ResetOrWarnAll(uint32 mapid, Difficulty difficulty, b
     }
 
     // note: this isn't fast but it's meant to be executed very rarely
-    Map const* map = sMapMgr->CreateBaseMap(mapid);          // _not_ include difficulty
-    MapInstanced::InstancedMaps &instMaps = ((MapInstanced*)map)->GetInstancedMaps();
-    MapInstanced::InstancedMaps::iterator mitr;
-    uint32 timeLeft;
-
-    for (mitr = instMaps.begin(); mitr != instMaps.end(); ++mitr)
+    if (mapEntry->IsDungeon())
     {
-        Map* map2 = mitr->second;
-        if (!map2->IsDungeon())
-            continue;
-
-        if (warn)
+        sMapMgr->DoForAllMapsWithMapId(mapid, [=](Map* map)
         {
-            if (now >= resetTime)
-                timeLeft = 0;
-            else
-                timeLeft = uint32(resetTime - now);
+            if (warn)
+            {
+                uint32 timeLeft;
+                if (now >= resetTime)
+                    timeLeft = 0;
+                else
+                    timeLeft = uint32(resetTime - now);
 
-            ((InstanceMap*)map2)->SendResetWarnings(timeLeft);
-        }
-        else
-            ((InstanceMap*)map2)->Reset(INSTANCE_RESET_GLOBAL);
+                ((InstanceMap*)map)->SendResetWarnings(timeLeft);
+            }
+            else
+                ((InstanceMap*)map)->Reset(INSTANCE_RESET_GLOBAL);
+        });
     }
 
     /// @todo delete creature/gameobject respawn times even if the maps are not loaded

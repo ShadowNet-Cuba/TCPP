@@ -32,6 +32,9 @@ EndScriptData */
 #include "SpellMgr.h"
 #include "WorldSession.h"
 
+namespace NpcProfessions
+{
+
 /*
 A few notes for future developement:
 - It's possible blacksmithing still require some tweaks and adjustments due to the way we _have_ to use reputation.
@@ -523,23 +526,23 @@ public:
                     case N_TRAINER_WEAPON2:
                     case N_TRAINER_ARMOR1:
                     case N_TRAINER_ARMOR2:
-                        AddGossipItemFor(player, 0, GOSSIP_UNLEARN_SMITH_SPEC, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_ARMORORWEAPON, DoLowUnlearnCost(player), false);
+                        AddGossipItemFor(player, GOSSIP_ICON_CHAT, GOSSIP_UNLEARN_SMITH_SPEC, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_ARMORORWEAPON, DoLowUnlearnCost(player), false);
                         //unknown textID (TALK_UNLEARN_AXEORWEAPON)
                         SendGossipMenuFor(player, player->GetGossipTextId(me), me->GetGUID());
                         break;
 
                     case N_TRAINER_HAMMER:
-                        AddGossipItemFor(player, 0, GOSSIP_UNLEARN_HAMMER, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_WEAPON_SPEC, DoMedUnlearnCost(player), false);
+                        AddGossipItemFor(player, GOSSIP_ICON_CHAT, GOSSIP_UNLEARN_HAMMER, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_WEAPON_SPEC, DoMedUnlearnCost(player), false);
                         //unknown textID (TALK_HAMMER_UNLEARN)
                         SendGossipMenuFor(player, player->GetGossipTextId(me), me->GetGUID());
                         break;
                     case N_TRAINER_AXE:
-                        AddGossipItemFor(player, 0, GOSSIP_UNLEARN_AXE, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_WEAPON_SPEC, DoMedUnlearnCost(player), false);
+                        AddGossipItemFor(player, GOSSIP_ICON_CHAT, GOSSIP_UNLEARN_AXE, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_WEAPON_SPEC, DoMedUnlearnCost(player), false);
                         //unknown textID (TALK_AXE_UNLEARN)
                         SendGossipMenuFor(player, player->GetGossipTextId(me), me->GetGUID());
                         break;
                     case N_TRAINER_SWORD:
-                        AddGossipItemFor(player, 0, GOSSIP_UNLEARN_SWORD, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_WEAPON_SPEC, DoMedUnlearnCost(player), false);
+                        AddGossipItemFor(player, GOSSIP_ICON_CHAT, GOSSIP_UNLEARN_SWORD, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_WEAPON_SPEC, DoMedUnlearnCost(player), false);
                         //unknown textID (TALK_SWORD_UNLEARN)
                         SendGossipMenuFor(player, player->GetGossipTextId(me), me->GetGUID());
                         break;
@@ -852,19 +855,19 @@ class npc_prof_leather : public CreatureScript
                     {
                         case N_TRAINER_DRAGON1:
                         case N_TRAINER_DRAGON2:
-                            AddGossipItemFor(player, 0, GOSSIP_UNLEARN_DRAGON, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_LEATHER_SPEC, DoMedUnlearnCost(player), false);
+                            AddGossipItemFor(player, GOSSIP_ICON_CHAT, GOSSIP_UNLEARN_DRAGON, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_LEATHER_SPEC, DoMedUnlearnCost(player), false);
                             //unknown textID ()
                             SendGossipMenuFor(player, player->GetGossipTextId(creature), creature->GetGUID());
                             break;
                         case N_TRAINER_ELEMENTAL1:
                         case N_TRAINER_ELEMENTAL2:
-                            AddGossipItemFor(player, 0, GOSSIP_UNLEARN_ELEMENTAL, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_LEATHER_SPEC, DoMedUnlearnCost(player), false);
+                            AddGossipItemFor(player, GOSSIP_ICON_CHAT, GOSSIP_UNLEARN_ELEMENTAL, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_LEATHER_SPEC, DoMedUnlearnCost(player), false);
                             //unknown textID ()
                             SendGossipMenuFor(player, player->GetGossipTextId(creature), creature->GetGUID());
                             break;
                         case N_TRAINER_TRIBAL1:
                         case N_TRAINER_TRIBAL2:
-                            AddGossipItemFor(player, 0, GOSSIP_UNLEARN_TRIBAL, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_LEATHER_SPEC, DoMedUnlearnCost(player), false);
+                            AddGossipItemFor(player, GOSSIP_ICON_CHAT, GOSSIP_UNLEARN_TRIBAL, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_LEATHER_SPEC, DoMedUnlearnCost(player), false);
                             //unknown textID ()
                             SendGossipMenuFor(player, player->GetGossipTextId(creature), creature->GetGUID());
                             break;
@@ -1033,17 +1036,17 @@ class npc_prof_tailor : public CreatureScript
                     switch (me->GetEntry())
                     {
                         case N_TRAINER_SPELLFIRE:
-                            AddGossipItemFor(player, 0, GOSSIP_UNLEARN_SPELLFIRE, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_TAILOR_SPEC, DoHighUnlearnCost(player), false);
+                            AddGossipItemFor(player, GOSSIP_ICON_CHAT, GOSSIP_UNLEARN_SPELLFIRE, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_TAILOR_SPEC, DoHighUnlearnCost(player), false);
                             //unknown textID ()
                             SendGossipMenuFor(player, player->GetGossipTextId(me), me->GetGUID());
                             break;
                         case N_TRAINER_MOONCLOTH:
-                            AddGossipItemFor(player, 0, GOSSIP_UNLEARN_MOONCLOTH, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_TAILOR_SPEC, DoHighUnlearnCost(player), false);
+                            AddGossipItemFor(player, GOSSIP_ICON_CHAT, GOSSIP_UNLEARN_MOONCLOTH, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_TAILOR_SPEC, DoHighUnlearnCost(player), false);
                             //unknown textID ()
                             SendGossipMenuFor(player, player->GetGossipTextId(me), me->GetGUID());
                             break;
                         case N_TRAINER_SHADOWEAVE:
-                            AddGossipItemFor(player, 0, GOSSIP_UNLEARN_SHADOWEAVE, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_TAILOR_SPEC, DoHighUnlearnCost(player), false);
+                            AddGossipItemFor(player, GOSSIP_ICON_CHAT, GOSSIP_UNLEARN_SHADOWEAVE, GOSSIP_SENDER_CHECK, action, BOX_UNLEARN_TAILOR_SPEC, DoHighUnlearnCost(player), false);
                             //unknown textID ()
                             SendGossipMenuFor(player, player->GetGossipTextId(me), me->GetGUID());
                             break;
@@ -1085,9 +1088,11 @@ enum MultiProfessionTrainer
     GOSSIP_MENU_LEATHERWORKING   = 12198,
     GOSSIP_MENU_TAILORING        = 12199
 };
+}
 
 void AddSC_npc_professions()
 {
+    using namespace NpcProfessions;
     new npc_prof_blacksmith();
     new npc_engineering_tele_trinket();
     new npc_prof_leather();

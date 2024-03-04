@@ -26,6 +26,8 @@
 #include "InstanceScript.h"
 #include "ObjectAccessor.h"
 
+namespace BlackrockCaverns::CorlaHeraldOfTwilight
+{
 enum Texts
 {
     // Corla
@@ -344,6 +346,8 @@ class spell_corla_nether_dragon_essence : public AuraScript
 
     void HandleTriggerSpell(AuraEffect const* /*aurEff*/)
     {
+        PreventDefaultAction();
+
         if (Unit* caster = GetCaster())
             caster->CastSpell(caster, RAND(SPELL_NETHER_DRAGON_ESSENCE_VISUAL_1, SPELL_NETHER_DRAGON_ESSENCE_VISUAL_2, SPELL_NETHER_DRAGON_ESSENCE_VISUAL_3), true);
     }
@@ -533,10 +537,12 @@ class achievement_arrested_development : public AchievementCriteriaScript
             return false;
         }
 };
-
+}
 
 void AddSC_boss_corla()
 {
+    using namespace BlackrockCaverns;
+    using namespace BlackrockCaverns::CorlaHeraldOfTwilight;
     RegisterBlackrockCavernsCreatureAI(boss_corla_herald_of_twilight);
     RegisterBlackrockCavernsCreatureAI(npc_corla_twilight_zealot);
     RegisterSpellScript(spell_corla_nether_dragon_essence);

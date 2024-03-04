@@ -41,6 +41,7 @@
 #include "TemporarySummon.h"
 #include "Transport.h"
 #include "Util.h"
+#include "WorldStateMgr.h"
 #include "WorldPacket.h"
 #include <cstdarg>
 
@@ -202,7 +203,9 @@ Battleground::~Battleground()
     // unload map
     if (m_Map)
     {
-        m_Map->SetUnload();
+        m_Map->UnloadAll(); // unload all objects (they may hold a reference to bg in their ZoneScript pointer)
+        m_Map->SetUnload(); // mark for deletion by MapManager
+
         //unlink to prevent crash, always unlink all pointer reference before destruction
         m_Map->SetBG(nullptr);
         m_Map = nullptr;
@@ -531,6 +534,10 @@ inline void Battleground::_ProcessJoin(uint32 diff)
         SetStatus(STATUS_IN_PROGRESS);
         SetStartDelayTime(StartDelayTimes[BG_STARTING_EVENT_FOURTH]);
 
+        for (auto const& [guid, _] : GetPlayers())
+            if (Player* player = ObjectAccessor::GetPlayer(GetBgMap(), guid))
+                player->StartAchievementCriteria(AchievementCriteriaStartEvent::StartBattleground, GetBgMap()->GetId());
+
         // Remove preparation
         if (isArena())
         {
@@ -740,18 +747,9 @@ void Battleground::RewardReputationToTeam(uint32 faction_id, uint32 Reputation, 
     }
 }
 
-void Battleground::UpdateWorldState(uint32 Field, uint32 Value)
+void Battleground::UpdateWorldState(int32 worldStateId, int32 value, bool hidden /*= false*/)
 {
-    WorldPacket data;
-    sBattlegroundMgr->BuildUpdateWorldStatePacket(&data, Field, Value);
-    SendPacketToAll(&data);
-}
-
-void Battleground::UpdateWorldStateForPlayer(uint32 field, uint32 value, Player* player)
-{
-    WorldPacket data;
-    sBattlegroundMgr->BuildUpdateWorldStatePacket(&data, field, value);
-    player->SendDirectMessage(&data);
+    sWorldStateMgr->SetValue(worldStateId, value, hidden, GetBgMap());
 }
 
 void Battleground::EndBattleground(uint32 winner)
@@ -1027,7 +1025,7 @@ void Battleground::RemovePlayerAtLeave(ObjectGuid guid, bool Transport, bool Sen
         player->SetBGTeam(0);
 
         // remove all criterias on bg leave
-        player->ResetAchievementCriteria(ACHIEVEMENT_CRITERIA_CONDITION_BG_MAP, GetMapId(), true);
+        player->FailAchievementCriteria(AchievementCriteriaFailEvent::LeaveBattleground, 0);
 
         player->RemoveBattlegroundQueueJoinTime(bgTypeId);
 
@@ -1066,8 +1064,6 @@ void Battleground::Reset()
 
     for (uint8 i = 0; i < BG_TEAMS_COUNT; ++i)
         _arenaTeamScores[i].Reset();
-
-    ResetBGSubclass();
 }
 
 void Battleground::StartBattleground()
@@ -1148,9 +1144,6 @@ void Battleground::AddPlayer(Player* player)
             player->SendDirectMessage(packet.Write());
         }
     }
-
-    // reset all map criterias on map enter
-    player->ResetAchievementCriteria(ACHIEVEMENT_CRITERIA_CONDITION_BG_MAP, GetMapId(), true);
 
     // setup BG group membership
     PlayerAddedToBGCheckIfBGIsRunning(player);
@@ -1929,12 +1922,6 @@ void Battleground::HandleAreaTrigger(Player* player, uint32 trigger)
 {
     TC_LOG_DEBUG("bg.battleground", "Unhandled AreaTrigger %u in Battleground %u. Player coords (x: %f, y: %f, z: %f)",
                    trigger, player->GetMapId(), player->GetPositionX(), player->GetPositionY(), player->GetPositionZ());
-}
-
-bool Battleground::CheckAchievementCriteriaMeet(uint32 criteriaId, Player const* /*source*/, Unit const* /*target*/, uint32 /*miscvalue1*/)
-{
-    TC_LOG_ERROR("bg.battleground", "Battleground::CheckAchievementCriteriaMeet: No implementation for criteria %u", criteriaId);
-    return false;
 }
 
 uint8 Battleground::GetUniqueBracketId() const

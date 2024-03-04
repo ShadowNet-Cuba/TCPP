@@ -20,7 +20,6 @@
 #include "Field.h"
 #include "Log.h"
 #include "ObjectMgr.h"
-#include "Opcodes.h"
 #include "Player.h"
 #include "QuestPackets.h"
 #include "QuestPools.h"
@@ -29,11 +28,11 @@
 Quest::Quest(Field* questRecord)
 {
     _id = questRecord[0].GetUInt32();
-    _method = questRecord[1].GetUInt8();
+    _type = questRecord[1].GetUInt8();
     _level = questRecord[2].GetInt16();
     _minLevel = questRecord[3].GetInt16();
     _zoneOrSort = questRecord[4].GetInt16();
-    _type = questRecord[5].GetUInt16();
+    _questInfoId = questRecord[5].GetUInt16();
     _suggestedPlayers = questRecord[6].GetUInt8();
     _requiredFactionId1 = questRecord[7].GetUInt16();
     _requiredFactionId2 = questRecord[8].GetUInt16();
@@ -233,6 +232,7 @@ void Quest::LoadQuestTemplateAddon(Field* fields)
 
     _allowableRaces = fields[18].GetUInt32();
     _timeAllowed = fields[19].GetInt32();
+    _questAbandonSpell = fields[20].GetUInt32();
 }
 
 void Quest::LoadQuestMailSender(Field* fields)
@@ -242,30 +242,33 @@ void Quest::LoadQuestMailSender(Field* fields)
 
 uint32 Quest::GetXPReward(Player const* player) const
 {
-    if (player)
+    if (!player)
+        return 0;
+
+    return Quest::CalcXPReward(player->getLevel(), _level, _rewardXPDifficulty);
+}
+
+/*static*/ uint32 Quest::CalcXPReward(uint8 playerLevel, int32 targetLevel, uint8 xpDifficulty)
+{
+    int32 effectiveLevel = (targetLevel == -1 ? playerLevel : targetLevel);
+    const QuestXPEntry* xpentry = sQuestXPStore.LookupEntry(effectiveLevel);
+    if (!xpentry)
+        return 0;
+
+    int32 diffFactor = 2 * (effectiveLevel - playerLevel) + 20;
+    if (diffFactor < 1)
+        diffFactor = 1;
+    else if (diffFactor > 10)
+        diffFactor = 10;
+
+    uint32 xp = RoundXPValue(diffFactor * xpentry->Difficulty[xpDifficulty] / 10);
+    if (sWorld->getIntConfig(CONFIG_MIN_QUEST_SCALED_XP_RATIO))
     {
-        int32 quest_level = (_level == -1 ? player->getLevel() : _level);
-        const QuestXPEntry* xpentry = sQuestXPStore.LookupEntry(quest_level);
-        if (!xpentry)
-            return 0;
-
-        int32 diffFactor = 2 * (quest_level - player->getLevel()) + 20;
-        if (diffFactor < 1)
-            diffFactor = 1;
-        else if (diffFactor > 10)
-            diffFactor = 10;
-
-        uint32 xp = RoundXPValue(diffFactor * xpentry->Difficulty[_rewardXPDifficulty] / 10);
-        if (sWorld->getIntConfig(CONFIG_MIN_QUEST_SCALED_XP_RATIO))
-        {
-            uint32 minScaledXP = RoundXPValue(xpentry->Difficulty[_rewardXPDifficulty]) * sWorld->getIntConfig(CONFIG_MIN_QUEST_SCALED_XP_RATIO) / 100;
-            xp = std::max(minScaledXP, xp);
-        }
-
-        return xp;
+        uint32 minScaledXP = RoundXPValue(xpentry->Difficulty[xpDifficulty]) * sWorld->getIntConfig(CONFIG_MIN_QUEST_SCALED_XP_RATIO) / 100;
+        xp = std::max(minScaledXP, xp);
     }
 
-    return 0;
+    return xp;
 }
 
 /*static*/ bool Quest::IsTakingQuestEnabled(uint32 questId)
@@ -336,7 +339,7 @@ void Quest::BuildQuestRewards(WorldPackets::Quest::QuestRewards& rewards, Player
 uint32 Quest::GetRewMoneyMaxLevel() const
 {
     // If Quest has flag to not give money on max level, it's 0
-    if (HasFlag(QUEST_FLAGS_NO_MONEY_FROM_XP))
+    if (HasFlag(QUEST_FLAGS_NO_MONEY_FOR_XP))
         return 0;
 
     // Else, return the rewarded copper sum modified by the rate
@@ -348,26 +351,26 @@ bool Quest::IsAutoAccept() const
     return !sWorld->getBoolConfig(CONFIG_QUEST_IGNORE_AUTO_ACCEPT) && HasFlag(QUEST_FLAGS_AUTO_ACCEPT);
 }
 
-bool Quest::IsAutoComplete() const
+bool Quest::IsTurnIn() const
 {
-    return !sWorld->getBoolConfig(CONFIG_QUEST_IGNORE_AUTO_COMPLETE) && _method == 0;
+    return !sWorld->getBoolConfig(CONFIG_QUEST_IGNORE_AUTO_COMPLETE) && _type == QUEST_TYPE_TURNIN;
 }
 
 bool Quest::IsRaidQuest(Difficulty difficulty) const
 {
-    switch (_type)
+    switch (_questInfoId)
     {
-        case QUEST_TYPE_RAID:
-            return true;
-        case QUEST_TYPE_RAID_10:
-            return !(difficulty & RAID_DIFFICULTY_MASK_25MAN);
-        case QUEST_TYPE_RAID_25:
-            return difficulty & RAID_DIFFICULTY_MASK_25MAN;
-        default:
-            break;
+    case QUEST_INFO_RAID:
+        return true;
+    case QUEST_INFO_RAID_10:
+        return difficulty == RAID_DIFFICULTY_10MAN_NORMAL || difficulty == RAID_DIFFICULTY_10MAN_HEROIC;
+    case QUEST_INFO_RAID_25:
+        return difficulty == RAID_DIFFICULTY_25MAN_NORMAL || difficulty == RAID_DIFFICULTY_25MAN_HEROIC;
+    default:
+        break;
     }
 
-    if ((_flags & QUEST_FLAGS_RAID) != 0)
+    if ((_flags & QUEST_FLAGS_RAID_GROUP_OK) != 0)
         return true;
 
     return false;
@@ -409,7 +412,7 @@ bool Quest::CanIncreaseRewardedQuestCounters() const
     return (!IsDFQuest() && !IsDaily() && (!IsRepeatable() || IsWeekly() || IsMonthly() || IsSeasonal()));
 }
 
-uint32 Quest::RoundXPValue(uint32 xp)
+/*static*/ uint32 Quest::RoundXPValue(uint32 xp)
 {
     if (xp <= 100)
         return 5 * ((xp + 2) / 5);
@@ -467,11 +470,11 @@ WorldPacket Quest::BuildQueryData(LocaleConstant loc) const
             ObjectMgr::GetLocaleString(localeData->ObjectiveText[i], loc, locQuestObjectiveText[i]);
     }
 
-    response.Info.QuestType = GetQuestMethod();
+    response.Info.QuestType = GetQuestType();
     response.Info.QuestLevel = GetQuestLevel();
     response.Info.QuestMinLevel = GetMinLevel();
     response.Info.QuestSortID = GetZoneOrSort();
-    response.Info.QuestInfoID = GetType();
+    response.Info.QuestInfoID = GetQuestInfoId();
 
     response.Info.SuggestedGroupNum = GetSuggestedPlayers();
 

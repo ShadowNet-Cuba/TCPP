@@ -30,7 +30,6 @@
 #include "PetDefines.h"
 #include "PlayerTaxi.h"
 #include "QuestDef.h"
-#include <queue>
 
 struct AccessRequirement;
 struct AchievementEntry;
@@ -187,6 +186,7 @@ uint32 const ArmorSpecializationIds[MAX_ARMOR_SPECIALIZATION_IDS] = { 86530, 865
 struct SpellModifier
 {
     SpellModifier(Aura* _ownerAura) : op(SpellModOp::HealingAndDamage), type(SPELLMOD_FLAT), value(0), mask(), spellId(0), ownerAura(_ownerAura) { }
+    virtual ~SpellModifier() = default;
 
     SpellModOp op;
     SpellModType type;
@@ -207,7 +207,9 @@ enum PlayerCurrencyState
 
 struct PlayerCurrency
 {
-    PlayerCurrencyState state;
+    PlayerCurrency() : State(PLAYERCURRENCY_NEW), Quantity(0), WeeklyQuantity(0), TrackedQuantity(0), Flags(0) { }
+
+    PlayerCurrencyState State;
     uint32 Quantity;
     uint32 WeeklyQuantity;
     uint32 TrackedQuantity;
@@ -673,6 +675,14 @@ enum TransferAbortReason
     TRANSFER_ABORT_ALREADY_COMPLETED_ENCOUNTER  = 0x13         // 4.2.2
 };
 
+enum class TransferAbortedUniqueMessageArgs : uint8
+{
+    None                                        = 0,
+    StillWithinTheLichKingsGrasp                = 1,
+    DestinyOfTheBilgewaterCartelStillUndecided  = 2,
+    FateOfGilneasHasNotBeenDecidedYet           = 3
+};
+
 enum InstanceResetWarningType
 {
     RAID_INSTANCE_WARNING_HOURS     = 1,                    // WARNING! %s is scheduled to reset in %d hour(s).
@@ -706,12 +716,15 @@ enum RestFlag
 
 enum TeleportToOptions
 {
+    TELE_TO_NONE                = 0x00,
     TELE_TO_GM_MODE             = 0x01,
     TELE_TO_NOT_LEAVE_TRANSPORT = 0x02,
     TELE_TO_NOT_LEAVE_COMBAT    = 0x04,
     TELE_TO_NOT_UNSUMMON_PET    = 0x08,
     TELE_TO_SPELL               = 0x10
 };
+
+DEFINE_ENUM_FLAG(TeleportToOptions);
 
 /// Type of environmental damages
 enum EnviromentalDamage
@@ -1019,8 +1032,8 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
 
         void SetObjectScale(float scale) override;
 
-        bool TeleportTo(uint32 mapid, float x, float y, float z, float orientation, uint32 options = 0);
-        bool TeleportTo(WorldLocation const& loc, uint32 options = 0);
+        bool TeleportTo(uint32 mapid, float x, float y, float z, float orientation, TeleportToOptions options = TELE_TO_NONE, Optional<uint32> instanceId = {});
+        bool TeleportTo(WorldLocation const& loc, TeleportToOptions options = TELE_TO_NONE, Optional<uint32> instanceId = {});
         bool TeleportToBGEntryPoint();
 
         bool HasSummonPending() const;
@@ -1095,7 +1108,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         // Played Time Stuff
         time_t m_logintime;
         time_t m_Last_tick;
-        uint32 m_Played_time[MAX_PLAYED_TIME_INDEX];
+        std::array<uint32, MAX_PLAYED_TIME_INDEX> m_Played_time;
         uint32 GetTotalPlayedTime() const { return m_Played_time[PLAYED_TIME_TOTAL]; }
         uint32 GetLevelPlayedTime() const { return m_Played_time[PLAYED_TIME_LEVEL]; }
 
@@ -1197,7 +1210,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         bool StoreNewItemInBestSlots(uint32 item_id, uint32 item_count);
         void AutoStoreLoot(uint8 bag, uint8 slot, uint32 loot_id, LootStore const& store, bool broadcast = false);
         void AutoStoreLoot(uint32 loot_id, LootStore const& store, bool broadcast = false) { AutoStoreLoot(NULL_BAG, NULL_SLOT, loot_id, store, broadcast); }
-        void StoreLootItem(uint8 lootSlot, Loot* loot, GameObject* go = nullptr);
+        void StoreLootItem(ObjectGuid lootWorldObjectGuid, uint8 lootSlot, Loot* loot, GameObject* go = nullptr);
 
         InventoryResult CanTakeMoreSimilarItems(uint32 entry, uint32 count, Item* pItem, uint32* no_space_count = nullptr, uint32* offendingItemId = nullptr) const;
         InventoryResult CanStoreItem(uint8 bag, uint8 slot, ItemPosCountVec& dest, uint32 entry, uint32 count, Item* pItem = nullptr, bool swap = false, uint32* no_space_count = nullptr) const;
@@ -1222,19 +1235,9 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         /// return presence related currency
         bool HasCurrency(uint32 id, uint32 count) const;
         /// initialize currency count for custom initialization at create character
-        void SetCurrency(uint32 id, uint32 count, bool printLog = true);
+        void SetCurrency(uint32 currencyId, uint32 amount);
         void ResetCurrencyWeekCap();
-
-        /**
-          * @name   ModifyCurrency
-          * @brief  Change specific currency and send result to client
-
-          * @param  id currency entry from CurrencyTypes.dbc
-          * @param  count integer value for adding/removing curent currency
-          * @param  printLog used on SMSG_UPDATE_CURRENCY
-          * @param  ignore gain multipliers
-        */
-        void ModifyCurrency(uint32 id, int32 count, bool printLog = true, bool ignoreMultipliers = false, bool isRefund = false);
+        void ModifyCurrency(uint32 currencyId, int32 amount, bool supressChatLog = false, bool ignoreModifiersAndTracking = false);
 
         void ApplyEquipCooldown(Item* pItem);
         void QuickEquipItem(uint16 pos, Item* pItem);
@@ -1278,7 +1281,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         TradeData* GetTradeData() const { return m_trade; }
         void TradeCancel(bool sendback);
 
-        CinematicMgr* GetCinematicMgr() const { return _cinematicMgr; }
+        CinematicMgr* GetCinematicMgr() const { return _cinematicMgr.get(); }
 
         void UpdateEnchantTime(uint32 time);
         void UpdateSoulboundTradeItems();
@@ -1328,7 +1331,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void PrepareQuestMenu(ObjectGuid guid);
         void SendPreparedQuest(ObjectGuid guid);
         bool IsActiveQuest(uint32 quest_id) const;
-        Quest const* GetNextQuest(ObjectGuid guid, Quest const* quest) const;
+        Quest const* GetNextQuest(Object const* questGiver, Quest const* quest) const;
         bool CanSeeStartQuest(Quest const* quest) const;
         bool CanTakeQuest(Quest const* quest, bool msg) const;
         bool CanAddQuest(Quest const* quest, bool msg) const;
@@ -1344,6 +1347,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, bool announce = true);
         void SetRewardedQuest(uint32 quest_id);
         void FailQuest(uint32 quest_id);
+        void FailQuestsWithFlag(QuestFlags flag);
         bool SatisfyQuestSkill(Quest const* qInfo, bool msg) const;
         bool SatisfyQuestLevel(Quest const* qInfo, bool msg) const;
         bool SatisfyQuestLog(bool msg) const;
@@ -1384,7 +1388,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void ResetDailyQuestStatus();
         void ResetWeeklyQuestStatus();
         void ResetMonthlyQuestStatus();
-        void ResetSeasonalQuestStatus(uint16 event_id);
+        void ResetSeasonalQuestStatus(uint16 event_id, time_t eventStartTime);
         void ResetWeeklyLFGRewardStatus();
         void ResetDailyLFGRewardStatus();
 
@@ -1655,11 +1659,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void UpdatePotionCooldown(Spell* spell = nullptr);
 
         void SetResurrectRequestData(WorldObject const* caster, uint32 health, uint32 mana, uint32 appliedAura);
-        void ClearResurrectRequestData()
-        {
-            delete _resurrectionData;
-            _resurrectionData = nullptr;
-        }
+        void ClearResurrectRequestData() { _resurrectionData.reset(); }
 
         bool IsResurrectRequestedBy(ObjectGuid const& guid) const
         {
@@ -1754,7 +1754,6 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         bool UpdateCraftSkill(SpellInfo const* spellInfo);
         bool UpdateGatherSkill(uint32 SkillId, uint32 SkillValue, uint32 RedLevel, uint32 Multiplicator = 1);
         bool UpdateFishingSkill();
-        void GiveXpForGather(uint32 const& skillId);
 
         void SurveyDigSite();
         void NotifyRequestResearchHistory();
@@ -1917,6 +1916,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void SetSkillPermBonus(uint8 pos, uint16 value);
 
         WorldLocation& GetTeleportDest() { return m_teleport_dest; }
+        Optional<uint32> GetTeleportDestInstanceId() const { return m_teleport_instanceId; }
         bool IsBeingTeleported() const { return mSemaphoreTeleport_Near || mSemaphoreTeleport_Far; }
         bool IsBeingTeleportedNear() const { return mSemaphoreTeleport_Near; }
         bool IsBeingTeleportedFar() const { return mSemaphoreTeleport_Far; }
@@ -1925,6 +1925,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void ProcessDelayedOperations();
 
         void CheckAreaExploreAndOutdoor(void);
+        void SetAreaExplored(uint32 areaId);
 
         static uint32 TeamForRace(uint8 race);
         uint32 GetTeam() const { return m_team; }
@@ -2052,11 +2053,10 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void SendInitWorldStates(uint32 zone, uint32 area);
         void SendUpdateWorldState(uint32 variable, uint32 value, bool hidden = false) const;
         void SendDirectMessage(WorldPacket const* data) const;
-        void SendBGWeekendWorldStates() const;
 
         void SendAurasForTarget(Unit* target) const;
 
-        PlayerMenu* PlayerTalkClass;
+        std::unique_ptr<PlayerMenu> PlayerTalkClass;
         std::vector<ItemSetEffect*> ItemSetEff;
 
         void SendLoot(ObjectGuid guid, LootType loot_type);
@@ -2161,8 +2161,12 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         uint32 GetSaveTimer() const { return m_nextSave; }
         void   SetSaveTimer(uint32 timer) { m_nextSave = timer; }
 
-        void SaveRecallPosition() { m_recall_location.WorldRelocate(*this); }
-        void Recall() { TeleportTo(m_recall_location); }
+        void SaveRecallPosition()
+        {
+            m_recall_location.WorldRelocate(*this);
+            m_recall_instanceId = GetInstanceId();
+        }
+        void Recall() { TeleportTo(m_recall_location, TELE_TO_NONE, m_recall_instanceId); }
 
         void SetHomebind(WorldLocation const& loc, uint32 areaId);
         void SendBindPointUpdate() const;
@@ -2291,7 +2295,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
 
         bool isAllowedToLoot(Creature const* creature);
 
-        DeclinedName const* GetDeclinedNames() const { return m_declinedname; }
+        DeclinedName const* GetDeclinedNames() const { return m_declinedname.get(); }
 
         uint8 GetRunesState() const { return m_runes->runeState; }
         RuneType GetBaseRune(uint8 index) const { return RuneType(m_runes->runes[index].BaseRune); }
@@ -2320,10 +2324,9 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         uint32 GetAchievementPoints() const;
         bool HasAchieved(uint32 achievementId) const;
         void ResetAchievements();
-        void ResetAchievementCriteria(AchievementCriteriaCondition condition, uint64 value, bool evenIfCriteriaComplete = false);
+        void FailAchievementCriteria(AchievementCriteriaFailEvent condition, int32 failAsset);
         void UpdateAchievementCriteria(AchievementCriteriaTypes type, uint64 miscValue1 = 0, uint64 miscValue2 = 0, uint64 miscValue3 = 0, WorldObject* ref = nullptr, GameObject* go = nullptr);
-        void StartTimedAchievement(AchievementCriteriaTimedTypes type, uint32 entry, uint32 timeLost = 0);
-        void RemoveTimedAchievement(AchievementCriteriaTimedTypes type, uint32 entry);
+        void StartAchievementCriteria(AchievementCriteriaStartEvent startEvent, uint32 entry, Milliseconds timeLost = Milliseconds::zero());
         void CompletedAchievement(AchievementEntry const* entry);
 
         bool HasTitle(uint32 bitIndex) const;
@@ -2414,8 +2417,8 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
 
         //We allow only one timed quest active at the same time. Below can then be simple value instead of set.
         typedef std::set<uint32> QuestSet;
-        typedef std::set<uint32> SeasonalQuestSet;
-        typedef std::unordered_map<uint32, SeasonalQuestSet> SeasonalEventQuestMap;
+        typedef std::unordered_map<uint32, time_t> SeasonalQuestMapByQuest;
+        typedef std::unordered_map<uint32, SeasonalQuestMapByQuest> SeasonalQuestMapByEvent;
 
         struct LFGRewardInfo
         {
@@ -2431,7 +2434,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         QuestSet m_timedquests;
         QuestSet m_weeklyquests;
         QuestSet m_monthlyquests;
-        SeasonalEventQuestMap m_seasonalquests;
+        SeasonalQuestMapByEvent m_seasonalquests;
         LFGRewardStatusMap m_lfgrewardstatus;
 
         ObjectGuid m_playerSharingQuest;
@@ -2526,7 +2529,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
 
         uint32 m_atLoginFlags;
 
-        Item* m_items[PLAYER_SLOTS_COUNT];
+        std::array<Item*, PLAYER_SLOTS_COUNT> m_items;
         uint32 m_currentBuybackSlot;
 
         PlayerCurrenciesMap _currencyStorage;
@@ -2550,7 +2553,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         /// Updates weekly conquest point cap (dynamic cap)
         void UpdateConquestCurrencyCap(uint32 currency);
 
-        VoidStorageItem* _voidStorageItems[VOID_STORAGE_MAX_SLOT];
+        std::array<VoidStorageItem*, VOID_STORAGE_MAX_SLOT> _voidStorageItems;
 
         std::vector<Item*> m_itemUpdateQueue;
         bool m_itemUpdateQueueBlocked;
@@ -2572,13 +2575,13 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         PlayerSpellMap m_spells;
         uint32 m_lastPotionId;                              // last used health/mana potion in combat, that block next potion use
 
-        PlayerTalentInfo* _talentMgr;
+        std::unique_ptr<PlayerTalentInfo> _talentMgr;
 
         ActionButtonList m_actionButtons;
 
-        float m_auraBaseFlatMod[BASEMOD_END];
-        float m_auraBasePctMod[BASEMOD_END];
-        int16 m_baseRatingValue[MAX_COMBAT_RATING];
+        std::array<float, BASEMOD_END> m_auraBaseFlatMod;
+        std::array<float, BASEMOD_END> m_auraBasePctMod;
+        std::array<int16, MAX_COMBAT_RATING> m_baseRatingValue;
         uint32 m_baseSpellPower;
         uint32 m_baseManaRegen;
         uint32 m_baseHealthRegen;
@@ -2590,7 +2593,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         ItemDurationList m_itemDuration;
         GuidUnorderedSet m_itemSoulboundTradeable;
 
-        ResurrectionData* _resurrectionData;
+        std::unique_ptr<ResurrectionData> _resurrectionData;
         WorldSession* m_session;
 
         JoinedChannelsList m_channels;
@@ -2650,12 +2653,14 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         // Player summoning
         time_t m_summon_expire;
         WorldLocation m_summon_location;
+        uint32 m_summon_instanceId;
 
         // Recall position
         WorldLocation m_recall_location;
+        uint32 m_recall_instanceId;
 
-        DeclinedName* m_declinedname;
-        Runes* m_runes;
+        std::unique_ptr<DeclinedName> m_declinedname;
+        std::unique_ptr<Runes> m_runes;
         EquipmentSetContainer _equipmentSets;
 
         bool CanAlwaysSee(WorldObject const* obj) const override;
@@ -2680,7 +2685,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         Item* _StoreItem(uint16 pos, Item* pItem, uint32 count, bool clone, bool update);
         Item* _LoadItem(CharacterDatabaseTransaction& trans, uint32 zoneId, uint32 timeDiff, Field* fields);
 
-        CinematicMgr* _cinematicMgr;
+        std::unique_ptr<CinematicMgr> _cinematicMgr;
 
         GuidSet m_refundableItems;
         void SendRefundInfo(Item* item);
@@ -2705,17 +2710,18 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         uint32 m_lastFallTime;
         float  m_lastFallZ;
 
-        int32 m_MirrorTimer[MAX_TIMERS];
+        std::array<int32, MAX_TIMERS> m_MirrorTimer;
         uint8 m_MirrorTimerFlags;
         uint8 m_MirrorTimerFlagsLast;
 
         // Rune type / Rune timer
-        uint32 m_runeGraceCooldown[MAX_RUNES];
-        uint32 m_lastRuneGraceTimers[MAX_RUNES];
+        std::array<uint32, MAX_RUNES> m_runeGraceCooldown;
+        std::array<uint32, MAX_RUNES> m_lastRuneGraceTimers;
 
         // Current teleport data
         WorldLocation m_teleport_dest;
-        uint32 m_teleport_options;
+        Optional<uint32> m_teleport_instanceId;
+        TeleportToOptions m_teleport_options;
         bool mSemaphoreTeleport_Near;
         bool mSemaphoreTeleport_Far;
 
@@ -2727,8 +2733,8 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         uint32 m_temporaryUnsummonedPetNumber;
         uint32 m_oldpetspell;
 
-        AchievementMgr<Player>* m_achievementMgr;
-        ReputationMgr*  m_reputationMgr;
+        std::unique_ptr<AchievementMgr<Player>> m_achievementMgr;
+        std::unique_ptr<ReputationMgr> m_reputationMgr;
 
         uint32 m_ChampioningFaction;
 
@@ -2747,7 +2753,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
 
         WorldLocation _corpseLocation;
 
-        Archaeology* _archaeology;
+        std::unique_ptr<Archaeology> _archaeology;
 
         std::vector<PlayerPetData*> PlayerPetDataStore;
 

@@ -30,6 +30,8 @@ EndScriptData */
 #include "onyxias_lair.h"
 #include "TemporarySummon.h"
 
+namespace OnyxiasLair
+{
 BossBoundaryData const boundaries =
 {
     { DATA_ONYXIA, new CircleBoundary(Position(-34.3697f, -212.3296f), 100.0) }
@@ -76,7 +78,7 @@ public:
 
         void OnGameObjectCreate(GameObject* go) override
         {
-            if ((go->GetGOInfo()->displayId == 4392 || go->GetGOInfo()->displayId == 4472) && go->GetGOInfo()->trap.spellId == 17731)
+            if ((go->GetGOInfo()->displayId == 4392 || go->GetGOInfo()->displayId == 4472) && go->GetGOInfo()->trap.spell == 17731)
             {
                 FloorEruptionGUID[0].insert(std::make_pair(go->GetGUID(), 0));
                 return;
@@ -97,7 +99,7 @@ public:
 
         void OnGameObjectRemove(GameObject* go) override
         {
-            if ((go->GetGOInfo()->displayId == 4392 || go->GetGOInfo()->displayId == 4472) && go->GetGOInfo()->trap.spellId == 17731)
+            if ((go->GetGOInfo()->displayId == 4392 || go->GetGOInfo()->displayId == 4472) && go->GetGOInfo()->trap.spell == 17731)
             {
                 FloorEruptionGUID[0].erase(go->GetGUID());
                 return;
@@ -121,7 +123,7 @@ public:
                 //remove all that are not present on FloorEruptionGUID[1] and update treeLen on each GUID
                 for (std::list<GameObject*>::const_iterator itr = nearFloorList.begin(); itr != nearFloorList.end(); ++itr)
                 {
-                    if (((*itr)->GetGOInfo()->displayId == 4392 || (*itr)->GetGOInfo()->displayId == 4472) && (*itr)->GetGOInfo()->trap.spellId == 17731)
+                    if (((*itr)->GetGOInfo()->displayId == 4392 || (*itr)->GetGOInfo()->displayId == 4472) && (*itr)->GetGOInfo()->trap.spell == 17731)
                     {
                         ObjectGuid nearFloorGUID = (*itr)->GetGUID();
                         if (FloorEruptionGUID[1].find(nearFloorGUID) != FloorEruptionGUID[1].end() && (*FloorEruptionGUID[1].find(nearFloorGUID)).second == 0)
@@ -264,8 +266,10 @@ public:
         bool   achievSheDeepBreathMore;
     };
 };
+}
 
 void AddSC_instance_onyxias_lair()
 {
+    using namespace OnyxiasLair;
     new instance_onyxias_lair();
 }

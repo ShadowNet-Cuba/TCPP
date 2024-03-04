@@ -23,7 +23,7 @@ ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::SpellHealPredicti
 {
     data << int32(predict.Points);
     data << uint8(predict.Type);
-    if (predict.BeaconGUID.has_value())
+    if (predict.Type == SPELL_HEAL_PREDICTION_TARGET_AND_BEACON)
         data << predict.BeaconGUID->WriteAsPacked();
     return data;
 }
@@ -193,22 +193,22 @@ ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::TargetedHealPredi
 
 ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Spells::ChannelStartInterruptImmunities const& immunity)
 {
-    data << immunity.SchoolImmunities;
-    data << immunity.Immunities;
+    data << int32(immunity.SchoolImmunities);
+    data << int32(immunity.Immunities);
     return data;
 }
 
 WorldPacket const* WorldPackets::Spells::ChannelStart::Write()
 {
     _worldPacket << CasterGUID.WriteAsPacked();
-    _worldPacket << uint32(SpellID);
-    _worldPacket << int32(ChannelDuration);
+    _worldPacket << int32(SpellID);
+    _worldPacket << uint32(ChannelDuration);
 
-    _worldPacket << uint8(InterruptImmunities.has_value());
+    _worldPacket << bool(InterruptImmunities.has_value());
     if (InterruptImmunities)
         _worldPacket << *InterruptImmunities;
 
-    _worldPacket << uint8(HealPrediction.has_value());
+    _worldPacket << bool(HealPrediction.has_value());
     if (HealPrediction)
         _worldPacket << *HealPrediction;
 
@@ -324,7 +324,7 @@ WorldPacket const* WorldPackets::Spells::PlaySpellVisual::Write()
     _worldPacket << float(TargetPosition.GetPositionZ());
     _worldPacket << int32(SpellVisualID);
     _worldPacket << uint16(MissReason);
-    _worldPacket << float(TargetPosition.GetOrientation());
+    _worldPacket << float(TravelSpeed);
     _worldPacket << float(TargetPosition.GetPositionX());
     _worldPacket << uint16(ReflectStatus);
     _worldPacket << float(TargetPosition.GetPositionY());
@@ -337,6 +337,7 @@ WorldPacket const* WorldPackets::Spells::PlaySpellVisual::Write()
     _worldPacket.WriteBit(Source[2]);
     _worldPacket.WriteBit(Source[4]);
     _worldPacket.WriteBit(Target[6]);
+    _worldPacket.WriteBit(Target[0]);
 
     _worldPacket.WriteBit(SpeedAsTime);
 

@@ -58,7 +58,7 @@ struct AchievementCategoryEntry
 struct AchievementCriteriaEntry
 {
     uint32  ID;                                             // 0
-    uint32  ReferredAchievement;                            // 1
+    uint32  AchievementID;                                  // 1
     uint32  Type;                                           // 2
 
     union
@@ -164,25 +164,19 @@ struct AchievementCriteriaEntry
 
         // ACHIEVEMENT_CRITERIA_TYPE_COMPLETE_GUILD_CHALLENGE_TYPE = 138
         uint32 GuildChallengeType;
-    } Asset;
+    } Asset;                                 // 3
 
-    uint64 Amount;
-
-    struct
-    {
-        uint32 Type;
-        uint32 Asset;
-    } AdditionalRequirements[MAX_CRITERIA_REQUIREMENTS];
-
+    uint64 Quantity;                                        // 4
+    uint32 StartEvent;                                      // 5
+    int32 StartAsset;                                       // 6
+    uint32 FailEvent;                                       // 7
+    int32 FailAsset;                                        // 8
     char* Description;                                      // 9
-    uint32 Flags;                                          // 10
-    uint32 StartEvent;                                     // 11 Only appears with timed achievements, seems to be the type of starting a timed Achievement, only type 1 and some of type 6 need manual starting
-                                                            //              1: ByEventId(?) (serverside IDs),    2: ByQuestId,   5: ByCastSpellId(?)
-                                                            //              6: BySpellIdTarget(some of these are unknown spells, some not, some maybe spells)
-                                                            //              7: ByKillNpcId,  9: ByUseItemId
-    uint32 StartAsset;                                     // 12 Alway appears with timed events, used internally to start the achievement, store
-    uint32 StartTimer;                                     // 13 time limit in seconds
-    uint32 OrderIndex;                                     // 14 also used in achievement shift-links as index in state bitmask
+    uint32 Flags;                                           // 10
+    uint32 TimerStartEvent;                                 // 11
+    uint32 TimerAsset;                                      // 12
+    uint32 TimerTime;                                       // 13
+    uint32 OrderIndex;                                      // 14
     uint32 RequiredWorldStateID;                            // 15
     int32  RequiredWorldStateValue;                         // 16
     uint32 AdditionalConditionType[MAX_ADDITIONAL_CRITERIA_CONDITIONS];  // 17-19
@@ -222,23 +216,13 @@ struct AreaTableEntry
     uint32 World_pvp_ID;                                    // 24
     int32 PvpCombatWorldStateID;                            // 25- worldStateId
 
+    EnumFlag<AreaFlags> GetFlags() const { return static_cast<AreaFlags>(Flags); }
+    EnumFlag<AreaMountFlags> GetMountFlags() const { return static_cast<AreaMountFlags>(MountFlags); }
+
     // helpers
     bool IsSanctuary() const
     {
-        if (ContinentID == 609)
-            return true;
-        return (Flags & AREA_FLAG_SANCTUARY) != 0;
-    }
-
-    bool IsFlyable() const
-    {
-        if (Flags & AREA_FLAG_OUTLAND)
-        {
-            if (!(Flags & AREA_FLAG_NO_FLY_ZONE))
-                return true;
-        }
-
-        return false;
+        return GetFlags().HasFlag(AreaFlags::NoPvP);
     }
 };
 
@@ -588,6 +572,8 @@ struct CurrencyTypesEntry
     uint32 MaxEarnablePerWeek;                              // 8
     uint32 Flags;                                           // 9
     //uint32 Description;                                   // 10
+
+    EnumFlag<CurrencyTypeFlags> GetFlags() const { return static_cast<CurrencyTypeFlags>(Flags); }
 };
 
 struct DestructibleModelDataEntry
@@ -1254,11 +1240,21 @@ struct MapEntry
 
     bool IsContinent() const
     {
-        return ID == 0 || ID == 1 || ID == 530 || ID == 571;
+        switch (ID)
+        {
+            case 0:
+            case 1:
+            case 530:
+            case 571:
+                return true;
+            default:
+                return false;
+        }
     }
 
     bool IsDynamicDifficultyMap() const { return GetFlags().HasFlag(MapFlags::DynamicDifficulty); }
     bool IsFlexLocking() const { return GetFlags().HasFlag(MapFlags::FlexibleRaidLocking); }
+    bool IsSplitByFaction() const { return ID == 609; }
 
     EnumFlag<MapFlags> GetFlags() const { return static_cast<MapFlags>(Flags); }
 };
@@ -1338,6 +1334,12 @@ struct OverrideSpellDataEntry
     uint32  Spells[MAX_OVERRIDE_SPELL];                     // 1-10
     // uint32  Flags;                                       // 11
     // char*   PlayerActionbar;                             // 12
+};
+
+struct PlayerConditionEntry
+{
+    uint32 ID;                                              // 0
+    char* FailureDescription;                               // 1
 };
 
 struct PowerDisplayEntry
@@ -1621,12 +1623,12 @@ struct SpellAuraRestrictionsEntry
 // SpellCastingRequirements.dbc
 struct SpellCastingRequirementsEntry
 {
-    //uint32  ID;                                           // 0
+    uint32  ID;                                             // 0
     uint32  FacingCasterFlags;                              // 1
-    //uint32  MinFactionID;                                 // 2
-    //uint32  MinReputation;                                // 3
-    int32  RequiredAreasID;                                 // 4
-    //uint32  RequiredAuraVision;                           // 5
+    uint32  MinFactionID;                                   // 2
+    uint32  MinReputation;                                  // 3
+    int32   RequiredAreasID;                                // 4
+    uint32  RequiredAuraVision;                             // 5
     uint32  RequiresSpellFocus;                             // 6
 };
 
@@ -1997,6 +1999,8 @@ struct SummonPropertiesEntry
     int32   Title;                                          // 3, see enum
     int32   Slot;                                           // 4, 0-6
     uint32  Flags;                                          // 5
+
+    EnumFlag<SummonPropertiesFlags> GetFlags() const { return static_cast<SummonPropertiesFlags>(Flags); }
 };
 
 struct TalentEntry

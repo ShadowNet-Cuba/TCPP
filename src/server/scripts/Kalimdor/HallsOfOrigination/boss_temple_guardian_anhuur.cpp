@@ -29,8 +29,9 @@
 #include "ScriptedCreature.h"
 #include "SpellAuraEffects.h"
 #include "SpellScript.h"
-#include "World.h"
 
+namespace HallsOfOrigination::TempleGuardianAnhuur
+{
 enum Texts
 {
     SAY_AGGRO                    = 0,
@@ -316,7 +317,7 @@ struct go_anhuur_beacon_of_light : public GameObjectAI
         me->SendCustomAnim(0);
         me->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
         me->DespawnOrUnsummon(1s + 200ms, 5s);
-        me->CastSpell(nullptr, me->GetGOInfo()->goober.spellId);
+        me->CastSpell(nullptr, me->GetGOInfo()->goober.spell);
         return true;
     }
 };
@@ -426,9 +427,12 @@ class spell_anhuur_burning_light_forcecast : public SpellScript
         OnObjectAreaTargetSelect.Register(&spell_anhuur_burning_light_forcecast::FilterTargets, EFFECT_1, TARGET_UNIT_SRC_AREA_ENEMY);
     }
 };
+}
 
 void AddSC_boss_temple_guardian_anhuur()
 {
+    using namespace HallsOfOrigination;
+    using namespace HallsOfOrigination::TempleGuardianAnhuur;
     RegisterHallsOfOriginationCreatureAI(boss_temple_guardian_anhuur);
     RegisterGameObjectAI(go_anhuur_beacon_of_light);
     RegisterSpellScript(spell_anhuur_divine_reckoning);

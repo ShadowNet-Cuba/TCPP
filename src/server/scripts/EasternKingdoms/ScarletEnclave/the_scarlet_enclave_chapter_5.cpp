@@ -24,7 +24,10 @@
 #include "ScriptedEscortAI.h"
 #include "ScriptedGossip.h"
 #include "TemporarySummon.h"
+#include "WorldStateMgr.h"
 
+namespace TheScarletEnclave::Chapter3
+{
 #define LESS_MOB // if you do not have a good server and do not want it to be laggy as hell
 //Light of Dawn
 enum mograine
@@ -51,9 +54,12 @@ enum mograine
     ENCOUNTER_TOTAL_DAWN              = 300,  // Total number
     ENCOUNTER_TOTAL_SCOURGE           = 10000,
 
-    WORLD_STATE_REMAINS               = 3592,
-    WORLD_STATE_COUNTDOWN             = 3603,
-    WORLD_STATE_EVENT_BEGIN           = 3605,
+    WORLD_STATE_FORCES_OF_THE_LIGHT_REMAINING   = 3590,
+    WORLD_STATE_FORCES_OF_THE_SCOURGE_REMAINING = 3591,
+    WORLD_STATE_SHOW_FORCES_REMAINING           = 3592,
+    WORLD_STATE_SHOW_MINUTES_UNTIL_BATTLE       = 3603,
+    WORLD_STATE_MINUTES_UNTIL_BATTLE            = 3604,
+    WORLD_STATE_BATTLE_IN_PROGRESS              = 3605,
 
     SAY_LIGHT_OF_DAWN01               = 0, // pre text
     SAY_LIGHT_OF_DAWN02               = 1,
@@ -221,19 +227,6 @@ enum mograine
     SPELL_THUNDER                     = 53630
 };
 
-void UpdateWorldState(Map* map, uint32 id, uint32 state)
-{
-    Map::PlayerList const& players = map->GetPlayers();
-    if (!players.isEmpty())
-    {
-        for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
-        {
-            if (Player* player = itr->GetSource())
-                player->SendUpdateWorldState(id, state);
-        }
-    }
-}
-
 Position const LightofDawnLoc[] =
 {
     {2281.335f, -5300.409f, 85.170f, 0},     // 0 Tirion Fordring loc
@@ -350,9 +343,9 @@ public:
                 me->Mount(25279);
                 me->SetVisible(true);
 
-                UpdateWorldState(me->GetMap(), WORLD_STATE_REMAINS, 0);
-                //UpdateWorldState(me->GetMap(), WORLD_STATE_COUNTDOWN, 0);
-                UpdateWorldState(me->GetMap(), WORLD_STATE_EVENT_BEGIN, 0);
+                sWorldStateMgr->SetValue(WORLD_STATE_SHOW_FORCES_REMAINING, 0, false, me->GetMap());
+                //sWorldStateMgr->SetValue(WORLD_STATE_SHOW_MINUTES_UNTIL_BATTLE, 0, false, me->GetMap());
+                sWorldStateMgr->SetValue(WORLD_STATE_BATTLE_IN_PROGRESS, 0, false, me->GetMap());
 
                 if (Creature* temp = ObjectAccessor::GetCreature(*me, uiTirionGUID))
                     temp->setDeathState(JUST_DIED);
@@ -590,13 +583,13 @@ public:
                     switch (uiStep)
                     {
                         case 0:  // countdown
-                            //UpdateWorldState(me->GetMap(), WORLD_STATE_COUNTDOWN, 1);
+                            //sWorldStateMgr->SetValue(WORLD_STATE_SHOW_MINUTES_UNTIL_BATTLE, 1, false, me->GetMap());
                             break;
 
                         case 1:  // just delay
-                            //UpdateWorldState(me->GetMap(), WORLD_STATE_REMAINS, 1);
-                            UpdateWorldState(me->GetMap(), WORLD_STATE_COUNTDOWN, 0);
-                            UpdateWorldState(me->GetMap(), WORLD_STATE_EVENT_BEGIN, 1);
+                            //sWorldStateMgr->SetValue(WORLD_STATE_SHOW_FORCES_REMAINING, 1, false, me->GetMap());
+                            sWorldStateMgr->SetValue(WORLD_STATE_SHOW_MINUTES_UNTIL_BATTLE, 0, false, me->GetMap());
+                            sWorldStateMgr->SetValue(WORLD_STATE_BATTLE_IN_PROGRESS, 1, false, me->GetMap());
                             me->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
                             JumpToNextStep(3000);
                             break;
@@ -1630,7 +1623,7 @@ public:
                 player->PrepareQuestMenu(me->GetGUID());
 
             if (player->GetQuestStatus(12801) == QUEST_STATUS_INCOMPLETE)
-                AddGossipItemFor(player, 0, "I am ready.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
+                AddGossipItemFor(player, GOSSIP_ICON_CHAT, "I am ready.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
 
             SendGossipMenuFor(player, player->GetGossipTextId(me), me->GetGUID());
 
@@ -1663,9 +1656,11 @@ public:
     };
 
 };
+}
 
 void AddSC_the_scarlet_enclave_chapter_5()
 {
+    using namespace TheScarletEnclave::Chapter3;
     new npc_highlord_darion_mograine();
     new npc_the_lich_king_tirion_dawn();
 }

@@ -17,6 +17,7 @@
 
 #include "GossipDef.h"
 #include "Formulas.h"
+#include "NPCPackets.h"
 #include "ObjectMgr.h"
 #include "QuestDef.h"
 #include "QuestPackets.h"
@@ -33,27 +34,27 @@ GossipMenu::~GossipMenu()
     ClearMenu();
 }
 
-uint32 GossipMenu::AddMenuItem(int32 optionIndex, uint8 icon, std::string const& message, uint32 sender, uint32 action, std::string const& boxMessage, uint32 boxMoney, bool coded /*= false*/)
+uint32 GossipMenu::AddMenuItem(int32 menuItemId, GossipOptionIcon icon, std::string const& message, uint32 sender, uint32 action, std::string const& boxMessage, uint32 boxMoney, bool coded /*= false*/)
 {
     ASSERT(_menuItems.size() <= GOSSIP_MAX_MENU_ITEMS);
 
     // Find a free new id - script case
-    if (optionIndex == -1)
+    if (menuItemId == -1)
     {
-        optionIndex = 0;
+        menuItemId = 0;
         if (!_menuItems.empty())
         {
             for (GossipMenuItemContainer::const_iterator itr = _menuItems.begin(); itr != _menuItems.end(); ++itr)
             {
-                if (int32(itr->first) > optionIndex)
+                if (int32(itr->first) > menuItemId)
                     break;
 
-                optionIndex = itr->first + 1;
+                menuItemId = itr->first + 1;
             }
         }
     }
 
-    GossipMenuItem& menuItem = _menuItems[optionIndex];
+    GossipMenuItem& menuItem = _menuItems[menuItemId];
 
     menuItem.MenuItemIcon    = icon;
     menuItem.Message         = message;
@@ -62,7 +63,8 @@ uint32 GossipMenu::AddMenuItem(int32 optionIndex, uint8 icon, std::string const&
     menuItem.OptionType      = action;
     menuItem.BoxMessage      = boxMessage;
     menuItem.BoxMoney        = boxMoney;
-    return optionIndex;
+
+    return menuItemId;
 }
 
 /**
@@ -124,8 +126,8 @@ void GossipMenu::AddMenuItem(uint32 menuId, uint32 menuItemId, uint32 sender, ui
         }
 
         /// Add menu item with existing method. Menu item id -1 is also used in ADD_GOSSIP_ITEM macro.
-        uint32 optionIndex = AddMenuItem(-1, itr->second.OptionIcon, strOptionText, sender, action, strBoxText, itr->second.BoxMoney, itr->second.BoxCoded);
-        AddGossipMenuItemData(optionIndex, itr->second.ActionMenuID, itr->second.ActionPoiID);
+        uint32 newOptionId = AddMenuItem(-1, itr->second.OptionIcon, strOptionText, sender, action, strBoxText, itr->second.BoxMoney, itr->second.BoxCoded);
+        AddGossipMenuItemData(newOptionId, itr->second.ActionMenuID, itr->second.ActionPoiID);
     }
 }
 
@@ -201,58 +203,51 @@ void PlayerMenu::SendGossipMenu(uint32 titleTextId, ObjectGuid objectGUID)
     _interactionData.Reset();
     _interactionData.SourceGuid = objectGUID;
 
-    WorldPacket data(SMSG_GOSSIP_MESSAGE, 100);         // guess size
-    data << uint64(objectGUID);
-    data << uint32(_gossipMenu.GetMenuId());            // new 2.4.0
-    data << uint32(titleTextId);
-    data << uint32(_gossipMenu.GetMenuItemCount());     // max count 0x10
+    WorldPackets::NPC::GossipMessage gossipMessage;
+    gossipMessage.GossipGUID = objectGUID;
+    gossipMessage.GossipID = _gossipMenu.GetMenuId();
+    gossipMessage.TextID = titleTextId;
 
-    for (GossipMenuItemContainer::const_iterator itr = _gossipMenu.GetMenuItems().begin(); itr != _gossipMenu.GetMenuItems().end(); ++itr)
+    gossipMessage.GossipOptions.reserve(_gossipMenu.GetMenuItems().size());
+    for (auto const& itr : _gossipMenu.GetMenuItems())
     {
-        GossipMenuItem const& item = itr->second;
-        data << uint32(itr->first);
-        data << uint8(item.MenuItemIcon);
-        data << uint8(item.IsCoded);                    // makes pop up box password
-        data << uint32(item.BoxMoney);                  // money required to open menu, 2.0.3
-        data << item.Message;                           // text for gossip item
-        data << item.BoxMessage;                        // accept text (related to money) pop up box, 2.0.3
+        WorldPackets::NPC::SGossipOptions& option = gossipMessage.GossipOptions.emplace_back();
+        option.ClientOption = itr.first;
+        option.OptionNPC = itr.second.MenuItemIcon;
+        option.OptionFlags = itr.second.IsCoded;     // makes pop up box password
+        option.OptionCost = itr.second.BoxMoney;     // money required to open menu, 2.0.3
+        option.Text = itr.second.Message;            // text for gossip item
+        option.Confirm = itr.second.BoxMessage;      // accept text (related to money) pop up box, 2.0.3
     }
-
-    size_t count_pos = data.wpos();
-    data << uint32(0);                                  // max count 0x20
-    uint32 count = 0;
 
     // Store this instead of checking the Singleton every loop iteration
     bool questLevelInTitle = sWorld->getBoolConfig(CONFIG_UI_QUESTLEVELS_IN_DIALOGS);
 
-    for (uint8 i = 0; i < _questMenu.GetMenuItemCount(); ++i)
+    gossipMessage.GossipQuestText.reserve(_questMenu.GetQuestMenuItems().size());
+    for (auto const& itr : _questMenu.GetQuestMenuItems())
     {
-        QuestMenuItem const& item = _questMenu.GetItem(i);
-        uint32 questID = item.QuestId;
-        if (Quest const* quest = sObjectMgr->GetQuestTemplate(questID))
-        {
-            ++count;
-            data << uint32(questID);
-            data << uint32(item.QuestIcon);
-            data << int32(quest->GetQuestLevel());
-            data << uint32(quest->GetFlags()); // 3.3.3 quest flags
-            data << uint8(quest->IsAutoComplete() && quest->IsRepeatable() && !quest->IsDailyOrWeekly() && !quest->IsMonthly()); // 3.3.3 icon changes - 0: yellow exclapamtion mark, 1: blue question mark
-            std::string title = quest->GetTitle();
+        Quest const* quest = sObjectMgr->GetQuestTemplate(itr.QuestId);
+        if (!quest)
+            continue;
 
-            LocaleConstant localeConstant = _session->GetSessionDbLocaleIndex();
-            if (localeConstant != LOCALE_enUS)
-                if (QuestLocale const* localeData = sObjectMgr->GetQuestLocale(questID))
-                    ObjectMgr::GetLocaleString(localeData->Title, localeConstant, title);
+        WorldPackets::NPC::GossipText& text = gossipMessage.GossipQuestText.emplace_back();
+        text.QuestID = itr.QuestId;
+        text.QuestType = itr.QuestIcon;
+        text.QuestFlags = quest->GetFlags();
+        text.QuestLevel = quest->GetQuestLevel();
+        text.Repeatable = quest->IsTurnIn() && quest->IsRepeatable() && !quest->IsDailyOrWeekly() && !quest->IsMonthly();
 
-            if (questLevelInTitle)
-                Quest::AddQuestLevelToTitle(title, quest->GetQuestLevel());
+        text.QuestTitle = quest->GetTitle();
+        LocaleConstant localeConstant = _session->GetSessionDbLocaleIndex();
+        if (localeConstant != LOCALE_enUS)
+            if (QuestLocale const* localeData = sObjectMgr->GetQuestLocale(itr.QuestId))
+                ObjectMgr::GetLocaleString(localeData->Title, localeConstant, text.QuestTitle);
 
-            data << title;                                  // max 0x200
-        }
+        if (questLevelInTitle)
+            Quest::AddQuestLevelToTitle(text.QuestTitle, quest->GetQuestLevel());
     }
 
-    data.put<uint8>(count_pos, count);
-    _session->SendPacket(&data);
+    _session->SendPacket(gossipMessage.Write());
 }
 
 void PlayerMenu::SendCloseGossip()
@@ -378,7 +373,7 @@ void PlayerMenu::SendQuestGiverQuestList(QEmote const& eEmote, const std::string
             if (questLevelInTitle)
                 Quest::AddQuestLevelToTitle(title, quest->GetQuestLevel());
 
-            bool repeatable = quest->IsAutoComplete() && quest->IsRepeatable() && !quest->IsDailyOrWeekly() && !quest->IsMonthly();
+            bool repeatable = quest->IsTurnIn() && quest->IsRepeatable() && !quest->IsDailyOrWeekly() && !quest->IsMonthly();
             questList.QuestDataText.emplace_back(questID, questMenuItem.QuestIcon, quest->GetQuestLevel(), quest->GetFlags(), repeatable, title);
         }
     }

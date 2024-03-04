@@ -27,7 +27,6 @@
 #include "Util.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
-#include "WorldStatePackets.h"
 
 void BattlegroundBFGScore::BuildObjectivesBlock(WorldPacket& data, ByteBuffer& content)
 {
@@ -280,41 +279,6 @@ void BattlegroundBFG::_DelBanner(uint8 node, uint8 type, uint8 teamIndex)
     SpawnBGObject(obj, RESPAWN_ONE_DAY);
 }
 
-void BattlegroundBFG::FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& data)
-{
-    const uint8 plusArray[] = { 0, 1, 2 };
-
-    // Node icons
-    for (uint8 node = 0; node < BG_BFG_DYNAMIC_NODES_COUNT; ++node)
-        data.Worldstates.emplace_back(uint32(BG_BFG_OP_NODEICONS[node]), uint32((m_Nodes[node] == 0) ? 1 : 0));
-
-    // Node occupied states
-    for (uint8 node = 0; node < BG_BFG_DYNAMIC_NODES_COUNT; ++node)
-        for (uint8 i = 1; i < BG_BFG_DYNAMIC_NODES_COUNT; ++i)
-            data.Worldstates.emplace_back(uint32(BG_BFG_OP_NODESTATES[node] + plusArray[i]), uint32((m_Nodes[node] == i) ? 1 : 0));
-
-    // How many bases each team owns
-    uint8 ally = 0, horde = 0;
-    for (uint8 node = 0; node < BG_BFG_DYNAMIC_NODES_COUNT; ++node)
-        if (m_Nodes[node] == BG_BFG_NODE_STATUS_ALLY_OCCUPIED)
-            ++ally;
-        else if (m_Nodes[node] == BG_BFG_NODE_STATUS_HORDE_OCCUPIED)
-            ++horde;
-
-    data.Worldstates.emplace_back(uint32(BG_BFG_OP_OCCUPIED_BASES_ALLY), uint32(ally));
-    data.Worldstates.emplace_back(uint32(BG_BFG_OP_OCCUPIED_BASES_HORDE), uint32(horde));
-
-    // Team scores
-    data.Worldstates.emplace_back(uint32(BG_BFG_OP_RESOURCES_MAX), uint32(BG_BFG_MAX_TEAM_SCORE));
-    data.Worldstates.emplace_back(uint32(BG_BFG_OP_RESOURCES_WARNING), uint32(BG_BFG_WARNING_NEAR_VICTORY_SCORE));
-    data.Worldstates.emplace_back(uint32(BG_BFG_OP_RESOURCES_ALLY), uint32(m_TeamScores[TEAM_ALLIANCE]));
-    data.Worldstates.emplace_back(uint32(BG_BFG_OP_RESOURCES_HORDE), uint32(m_TeamScores[TEAM_HORDE]));
-
-    // other unknown
-    data.Worldstates.emplace_back(uint32(0x745), uint32(0x2));           // 37 1861 unk
-}
-
-
 void BattlegroundBFG::_SendNodeUpdate(uint8 node)
 {
     // Send node owner state update to refresh map icons on client
@@ -349,7 +313,7 @@ void BattlegroundBFG::_NodeOccupied(uint8 node, Team team)
 
     uint8 capturedNodes = 0;
     for (uint8 i = 0; i < BG_BFG_DYNAMIC_NODES_COUNT; ++i)
-        if (m_Nodes[i] == GetTeamIndexByTeamId(team) + BG_BFG_NODE_TYPE_OCCUPIED && !m_NodeTimers[i])
+        if (m_Nodes[i] == uint32(GetTeamIndexByTeamId(team)) + BG_BFG_NODE_TYPE_OCCUPIED && !m_NodeTimers[i])
             ++capturedNodes;
 
     if (capturedNodes >= 5)
@@ -443,7 +407,7 @@ void BattlegroundBFG::EventPlayerClickedOnFlag(Player* source, GameObject* /*tar
         {
             UpdatePlayerScore(source, SCORE_BASES_ASSAULTED, 1);
             m_prevNodes[node] = m_Nodes[node];
-            m_Nodes[node] = teamIndex + BG_BFG_NODE_TYPE_CONTESTED;
+            m_Nodes[node] = uint8(teamIndex) + BG_BFG_NODE_TYPE_CONTESTED;
             // burn current contested banner
             _DelBanner(node, BG_BFG_NODE_TYPE_CONTESTED, !teamIndex);
             // create new contested banner
@@ -461,7 +425,7 @@ void BattlegroundBFG::EventPlayerClickedOnFlag(Player* source, GameObject* /*tar
         {
             UpdatePlayerScore(source, SCORE_BASES_DEFENDED, 1);
             m_prevNodes[node] = m_Nodes[node];
-            m_Nodes[node] = teamIndex + BG_BFG_NODE_TYPE_OCCUPIED;
+            m_Nodes[node] = uint8(teamIndex) + BG_BFG_NODE_TYPE_OCCUPIED;
             // burn current contested banner
             _DelBanner(node, BG_BFG_NODE_TYPE_CONTESTED, !teamIndex);
             // create new occupied banner
@@ -482,7 +446,7 @@ void BattlegroundBFG::EventPlayerClickedOnFlag(Player* source, GameObject* /*tar
     {
         UpdatePlayerScore(source, SCORE_BASES_ASSAULTED, 1);
         m_prevNodes[node] = m_Nodes[node];
-        m_Nodes[node] = teamIndex + BG_BFG_NODE_TYPE_CONTESTED;
+        m_Nodes[node] = uint8(teamIndex) + BG_BFG_NODE_TYPE_CONTESTED;
         // burn current occupied banner
         _DelBanner(node, BG_BFG_NODE_TYPE_OCCUPIED, !teamIndex);
         // create new contested banner
@@ -673,26 +637,4 @@ bool BattlegroundBFG::UpdatePlayerScore(Player* player, uint32 type, uint32 valu
             break;
     }
     return true;
-}
-
-bool BattlegroundBFG::IsAllNodesControlledByTeam(uint32 team) const
-{
-    uint32 count = 0;
-    for (int i = 0; i < BG_BFG_DYNAMIC_NODES_COUNT; ++i)
-        if ((team == ALLIANCE && m_Nodes[i] == BG_BFG_NODE_STATUS_ALLY_OCCUPIED) ||
-            (team == HORDE && m_Nodes[i] == BG_BFG_NODE_STATUS_HORDE_OCCUPIED))
-            ++count;
-
-    return count == BG_BFG_DYNAMIC_NODES_COUNT;
-}
-
-bool BattlegroundBFG::CheckAchievementCriteriaMeet(uint32 criteriaId, Player const* player, Unit const* target, uint32 miscvalue)
-{
-    switch (criteriaId)
-    {
-    case BG_CRITERIA_CHECK_RESILIENT_VICTORY:
-        return m_TeamScores500Disadvantage[GetTeamIndexByTeamId(player->GetTeam())];
-    }
-
-    return Battleground::CheckAchievementCriteriaMeet(criteriaId, player, target, miscvalue);
 }

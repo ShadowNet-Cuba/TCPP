@@ -26,6 +26,7 @@
 #include "ObjectMgr.h"
 #include "Opcodes.h"
 #include "Pet.h"
+#include "PetPackets.h"
 #include "PetAI.h"
 #include "Player.h"
 #include "Spell.h"
@@ -231,7 +232,7 @@ void WorldSession::HandlePetActionHelper(Unit* pet, ObjectGuid guid1, uint32 spe
 
                             //10% chance to play special pet attack talk, else growl
                             if (pet->IsPet() && ((Pet*)pet)->getPetType() == SUMMON_PET && pet != TargetUnit && urand(0, 100) < 10)
-                                pet->SendPetTalk((uint32)PET_TALK_ATTACK);
+                                pet->SendPetActionSound((uint32)PET_TALK_ATTACK);
                             else
                             {
                                 // 90% chance for pet and 100% chance for charmed creature
@@ -370,7 +371,7 @@ void WorldSession::HandlePetActionHelper(Unit* pet, ObjectGuid guid1, uint32 spe
                 //10% chance to play special pet attack talk, else growl
                 //actually this only seems to happen on special spells, fire shield for imp, torment for voidwalker, but it's stupid to check every spell
                 if (pet->IsPet() && (((Pet*)pet)->getPetType() == SUMMON_PET) && (pet != unit_target) && (urand(0, 100) < 10))
-                    pet->SendPetTalk((uint32)PET_TALK_SPECIAL_SPELL);
+                    pet->SendPetActionSound(PET_TALK_SPECIAL_SPELL);
                 else
                 {
                     pet->SendPetAIReaction(guid1);
@@ -813,7 +814,7 @@ void WorldSession::HandlePetCastSpellOpcode(WorldPacket& recvPacket)
                 // 10% chance to play special pet attack talk, else growl
                 // actually this only seems to happen on special spells, fire shield for imp, torment for voidwalker, but it's stupid to check every spell
                 if (pet->getPetType() == SUMMON_PET && (urand(0, 100) < 10))
-                    pet->SendPetTalk(PET_TALK_SPECIAL_SPELL);
+                    pet->SendPetActionSound(PET_TALK_SPECIAL_SPELL);
                 else
                     pet->SendPetAIReaction(guid);
             }
@@ -957,17 +958,15 @@ void WorldSession::SendPetSlotUpdated(int32 petNumberA, int32 petSlotA, int32 pe
 
 void WorldSession::SendPetAdded(int32 petSlot, int32 petNumber, int32 creatureID, int32 level, std::string name)
 {
-    WorldPacket data(SMSG_PET_ADDED, 4 + 4 + 1 + 4 + 4 + name.length());
+    WorldPackets::Pet::PetAdded petAdded;
+    petAdded.Level = level;
+    petAdded.PetSlot = petSlot;
+    petAdded.Flags = PET_STABLE_ACTIVE | (petSlot > PET_SLOT_LAST_ACTIVE_SLOT ? PET_STABLE_INACTIVE : 0);
+    petAdded.CreatureID = creatureID;
+    petAdded.Name = name;
+    petAdded.PetNumber = petNumber;
 
-    data << uint32(level);
-    data << uint32(petSlot);
-    data << uint8(PET_STABLE_ACTIVE | (petSlot > PET_SLOT_LAST_ACTIVE_SLOT ? PET_STABLE_INACTIVE : 0));
-    data << uint32(creatureID);
-    data << uint32(petNumber);
-    data.WriteBits(uint32(name.length()), 8);
-    data << name;
-
-    SendPacket(&data);
+    SendPacket(petAdded.Write());
 }
 
 void WorldSession::HandleRequestPetInfoOpcode(WorldPacket& /*recvData*/)

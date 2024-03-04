@@ -24,10 +24,12 @@
 #include "Item.h"
 #include "ItemPackets.h"
 #include "Log.h"
+#include "MiscPackets.h"
 #include "NPCPackets.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
 #include "Player.h"
+#include "ReforgePackets.h"
 #include "SpellInfo.h"
 #include "WorldPacket.h"
 #include "World.h"
@@ -571,8 +573,15 @@ void WorldSession::HandleBuyItemOpcode(WorldPacket& recvData)
         TC_LOG_DEBUG("network", "WORLD: received wrong itemType (%u) in HandleBuyItemOpcode", itemType);
 }
 
-void WorldSession::HandleSetCurrencyFlags(WorldPackets::Misc::SetCurrencyFlags& /*packet*/)
+void WorldSession::HandleSetCurrencyFlags(WorldPackets::Misc::SetCurrencyFlags& packet)
 {
+    PlayerCurrenciesMap::iterator itr = _player->_currencyStorage.find(packet.CurrencyID);
+    if (itr == _player->_currencyStorage.end())
+        return;
+
+    itr->second.Flags = packet.Flags;
+    if (itr->second.State != PLAYERCURRENCY_NEW)
+        itr->second.State = PLAYERCURRENCY_CHANGED;
 }
 
 void WorldSession::HandleListInventoryOpcode(WorldPackets::NPC::Hello& packet)
@@ -626,12 +635,9 @@ void WorldSession::SendListInventory(ObjectGuid vendorGuid)
 
         WorldPackets::NPC::VendorItem& item = packet.Items[count];
 
-        /*
-        // Todo: implement dbc file and handling
         if (PlayerConditionEntry const* playerCondition = sPlayerConditionStore.LookupEntry(vendorItem->PlayerConditionId))
             if (!ConditionMgr::IsPlayerMeetingCondition(_player, playerCondition))
                 item.PlayerConditionFailed = playerCondition->ID;
-        */
 
         if (vendorItem->Type == ITEM_VENDOR_TYPE_ITEM)
         {
@@ -1444,47 +1450,23 @@ void WorldSession::HandleTransmogrifyItems(WorldPackets::Item::TransmogrifyItems
 
 void WorldSession::SendReforgeResult(bool success)
 {
-    WorldPacket data(SMSG_REFORGE_RESULT, 1);
-    data.WriteBit(success);
-    data.FlushBits();
-    SendPacket(&data);
+    WorldPackets::Reforge::ReforgeResult packet;
+    packet.Success = success;
+    SendPacket(packet.Write());
 }
 
-void WorldSession::HandleReforgeItemOpcode(WorldPacket& recvData)
+void WorldSession::HandleReforgeItemOpcode(WorldPackets::Reforge::ReforgeItem& packet)
 {
-    uint32 slot, reforgeEntry;
-    ObjectGuid guid;
-    uint32 bag;
     Player* player = GetPlayer();
 
-    recvData >> reforgeEntry >> slot >> bag;
-
-    guid[2] = recvData.ReadBit();
-    guid[6] = recvData.ReadBit();
-    guid[3] = recvData.ReadBit();
-    guid[4] = recvData.ReadBit();
-    guid[1] = recvData.ReadBit();
-    guid[0] = recvData.ReadBit();
-    guid[7] = recvData.ReadBit();
-    guid[5] = recvData.ReadBit();
-
-    recvData.ReadByteSeq(guid[2]);
-    recvData.ReadByteSeq(guid[3]);
-    recvData.ReadByteSeq(guid[6]);
-    recvData.ReadByteSeq(guid[4]);
-    recvData.ReadByteSeq(guid[1]);
-    recvData.ReadByteSeq(guid[0]);
-    recvData.ReadByteSeq(guid[7]);
-    recvData.ReadByteSeq(guid[5]);
-
-    if (!player->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_REFORGER))
+    if (!player->GetNPCIfCanInteractWith(packet.ReforgerGUID, UNIT_NPC_FLAG_REFORGER))
     {
-        TC_LOG_DEBUG("network", "WORLD: HandleReforgeItemOpcode - %s not found or player can't interact with it.", guid.ToString().c_str());
+        TC_LOG_DEBUG("network", "WORLD: HandleReforgeItemOpcode - %s not found or player can't interact with it.", packet.ReforgerGUID.ToString().c_str());
         SendReforgeResult(false);
         return;
     }
 
-    Item* item = player->GetItemByPos(bag, slot);
+    Item* item = player->GetItemByPos(packet.ContainerId, packet.SlotNum);
 
     if (!item)
     {
@@ -1493,7 +1475,15 @@ void WorldSession::HandleReforgeItemOpcode(WorldPacket& recvData)
         return;
     }
 
-    if (!reforgeEntry)
+    // Packet spoofing check. The client does not allow reforging reforging items below item level 200
+    if (item->GetItemLevel() < 200)
+    {
+        TC_LOG_ERROR("network", "WORLD: HandleReforgeItemOpcode - Player (Guid: %u Name: %s) tried to reforge an item item (Entry: %u) below item level 200. Probably cheater.", player->GetGUID().GetCounter(), player->GetName().c_str(), item->GetEntry());
+        SendReforgeResult(false);
+        return;
+    }
+
+    if (!packet.Enchantment)
     {
         if (!item->GetEnchantmentId(REFORGE_ENCHANTMENT_SLOT))
         {
@@ -1517,10 +1507,10 @@ void WorldSession::HandleReforgeItemOpcode(WorldPacket& recvData)
         return;
     }
 
-    ItemReforgeEntry const* stats = sItemReforgeStore.LookupEntry(reforgeEntry);
+    ItemReforgeEntry const* stats = sItemReforgeStore.LookupEntry(packet.Enchantment);
     if (!stats)
     {
-        TC_LOG_DEBUG("network", "WORLD: HandleReforgeItemOpcode - Player (Guid: %u Name: %s) tried to reforge an item with invalid reforge entry (%u).", player->GetGUID().GetCounter(), player->GetName().c_str(), reforgeEntry);
+        TC_LOG_DEBUG("network", "WORLD: HandleReforgeItemOpcode - Player (Guid: %u Name: %s) tried to reforge an item with invalid reforge entry (%u).", player->GetGUID().GetCounter(), player->GetName().c_str(), packet.Enchantment);
         SendReforgeResult(false);
         return;
     }
@@ -1539,7 +1529,7 @@ void WorldSession::HandleReforgeItemOpcode(WorldPacket& recvData)
 
     player->ModifyMoney(-int64(item->GetSpecialPrice()));
 
-    item->SetEnchantment(REFORGE_ENCHANTMENT_SLOT, reforgeEntry, 0, 0);
+    item->SetEnchantment(REFORGE_ENCHANTMENT_SLOT, packet.Enchantment, 0, 0);
 
     SendReforgeResult(true);
 

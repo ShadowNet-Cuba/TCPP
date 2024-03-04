@@ -28,7 +28,6 @@
 #include "Creature.h"
 #include "GameObject.h"
 #include "GameTime.h"
-#include "MapManager.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "Random.h"
@@ -36,6 +35,8 @@
 #include "World.h"
 #include "WorldStateMgr.h"
 
+namespace Battlefields::TB
+{
 const uint32 TBFactions[BG_TEAMS_COUNT] = { 1610, 1732 };
 
 // Stalker
@@ -270,8 +271,6 @@ bool BattlefieldTB::SetupBattlefield()
     m_TypeId = BATTLEFIELD_TB;                              // See enum BattlefieldTypes
     m_BattleId = BATTLEFIELD_BATTLEID_TB;
     m_ZoneId = BATTLEFIELD_TB_ZONEID;
-    m_MapId = BATTLEFIELD_TB_MAPID;
-    m_Map = sMapMgr->CreateBaseMap(m_MapId);
 
     InitStalker(NPC_DEBUG_ANNOUNCER, TolBaradDebugAnnouncerPos);
 
@@ -296,35 +295,34 @@ bool BattlefieldTB::SetupBattlefield()
 
     m_Data32.resize(BATTLEFIELD_TB_DATA_MAX);
 
-    m_saveTimer = 5 * MINUTE * IN_MILLISECONDS;
-
     updatedNPCAndObjects = true;
     m_updateObjectsTimer = 0;
 
     // Was there a battle going on or time isn't set yet? Then use m_RestartAfterCrash
-    if (sWorld->getWorldState(WS_BATTLEFIELD_TB_STATE_BATTLE) == 1 || sWorld->getWorldState(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE) == 0)
-        sWorld->setWorldState(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, m_RestartAfterCrash);
+    if (sWorldStateMgr->GetValue(WS_BATTLEFIELD_TB_STATE_BATTLE, m_Map) == 1 || sWorldStateMgr->GetValue(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, m_Map) < GameTime::GetGameTime())
+    {
+        sWorldStateMgr->SetValueAndSaveInDb(WS_BATTLEFIELD_TB_STATE_BATTLE, 0, false, m_Map);
+        sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, GameTime::GetGameTime() + m_RestartAfterCrash / IN_MILLISECONDS, false, m_Map);
+    }
 
     // Set timer
-    m_Timer = sWorld->getWorldState(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE);
+    m_Timer = sWorldStateMgr->GetValue(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, m_Map) - GameTime::GetGameTime();
 
     // Defending team isn't set yet? Choose randomly.
-    if (sWorld->getWorldState(WS_BATTLEFIELD_TB_FACTION_CONTROLLING) == 0)
-        sWorld->setWorldState(WS_BATTLEFIELD_TB_FACTION_CONTROLLING, uint32(urand(1, 2)));
+    if (sWorldStateMgr->GetValue(WS_BATTLEFIELD_TB_FACTION_CONTROLLING, m_Map) == 0)
+        sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_FACTION_CONTROLLING, uint32(urand(1, 2)), false, m_Map);
 
     // Set defender team
-    SetDefenderTeam(TeamId(sWorld->getWorldState(WS_BATTLEFIELD_TB_FACTION_CONTROLLING) - 1));
+    SetDefenderTeam(TeamId(sWorldStateMgr->GetValue(WS_BATTLEFIELD_TB_FACTION_CONTROLLING, m_Map) - 1));
 
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE_SHOW, 1, false, m_Map);
-    sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, GameTime::GetGameTime() + m_Timer / IN_MILLISECONDS, false, m_Map);
+    sWorldStateMgr->SetValueAndSaveInDb(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, GameTime::GetGameTime() + m_Timer / IN_MILLISECONDS, false, m_Map);
 
-    sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_FACTION_CONTROLLING, GetDefenderTeam() + 1, false, m_Map);
+    sWorldStateMgr->SetValueAndSaveInDb(WS_BATTLEFIELD_TB_FACTION_CONTROLLING, GetDefenderTeam() + 1, false, m_Map);
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_ALLIANCE_CONTROLS_SHOW, GetDefenderTeam() == TEAM_ALLIANCE ? 1 : 0, false, m_Map);
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_HORDE_CONTROLS_SHOW, GetDefenderTeam() == TEAM_HORDE ? 1 : 0, false, m_Map);
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_KEEP_ALLIANCE, GetDefenderTeam() == TEAM_ALLIANCE ? 1 : 0, false, m_Map);
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_KEEP_HORDE, GetDefenderTeam() == TEAM_HORDE ? 1 : 0, false, m_Map);
-
-    SaveWorldStateValues();
 
     // Create capture points
     for (uint8 i = 0; i < TB_BASE_COUNT; i++)
@@ -411,14 +409,6 @@ bool BattlefieldTB::Update(uint32 diff)
             m_updateObjectsTimer -= diff;
     }
 
-    if (m_saveTimer <= diff)
-    {
-        SaveWorldStateValues();
-        m_saveTimer = 60 * IN_MILLISECONDS;
-    }
-    else
-        m_saveTimer -= diff;
-
     return m_return;
 }
 
@@ -462,13 +452,6 @@ void BattlefieldTB::RemoveAurasFromPlayer(Player* player)
     player->RemoveAurasDueToSpell(SPELL_TB_SPIRITUAL_IMMUNITY);
 }
 
-void BattlefieldTB::SaveWorldStateValues()
-{
-    sWorld->setWorldState(WS_BATTLEFIELD_TB_FACTION_CONTROLLING, uint32(GetDefenderTeam()));
-    sWorld->setWorldState(WS_BATTLEFIELD_TB_STATE_BATTLE, uint32(IsWarTime() ? 1 : 0));
-    sWorld->setWorldState(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, uint32(!IsWarTime() ? m_Timer : 0));
-}
-
 void BattlefieldTB::OnStartGrouping()
 {
     UpdateNPCsAndGameObjects();
@@ -495,7 +478,7 @@ void BattlefieldTB::OnBattleStart()
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_TIME_BATTLE_END, GameTime::GetGameTime() + m_Timer / IN_MILLISECONDS, false, m_Map);
 
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE_SHOW, 0, false, m_Map);
-    sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, 0, false, m_Map);
+    sWorldStateMgr->SetValueAndSaveInDb(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, 0, false, m_Map);
 
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_ALLIANCE_ATTACKING_SHOW, GetAttackerTeam() == TEAM_ALLIANCE ? 1 : 0, false, m_Map);
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_HORDE_ATTACKING_SHOW, GetAttackerTeam() == TEAM_HORDE ? 1 : 0, false, m_Map);
@@ -510,7 +493,7 @@ void BattlefieldTB::OnBattleStart()
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_TOWERS_DESTROYED, 0, false, m_Map);
 
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_STATE_PREPARATIONS, 0, false, m_Map);
-    sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_STATE_BATTLE, 1, false, m_Map);
+    sWorldStateMgr->SetValueAndSaveInDb(WS_BATTLEFIELD_TB_STATE_BATTLE, 1, false, m_Map);
 
     // Towers/spires
     for (uint8 i = 0; i < TB_TOWERS_COUNT; i++)
@@ -561,12 +544,12 @@ void BattlefieldTB::OnBattleEnd(bool endByTimer)
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_TIME_BATTLE_END, 0, false, m_Map);
 
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE_SHOW, 1, false, m_Map);
-    sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, GameTime::GetGameTime() + m_NoWarBattleTime / IN_MILLISECONDS, false, m_Map);
+    sWorldStateMgr->SetValueAndSaveInDb(WS_BATTLEFIELD_TB_TIME_NEXT_BATTLE, GameTime::GetGameTime() + m_NoWarBattleTime / IN_MILLISECONDS, false, m_Map);
 
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_ALLIANCE_ATTACKING_SHOW, 0, false, m_Map);
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_HORDE_ATTACKING_SHOW, 0, false, m_Map);
 
-    sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_FACTION_CONTROLLING, GetDefenderTeam() + 1, false, m_Map);
+    sWorldStateMgr->SetValueAndSaveInDb(WS_BATTLEFIELD_TB_FACTION_CONTROLLING, GetDefenderTeam() + 1, false, m_Map);
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_ALLIANCE_CONTROLS_SHOW, GetDefenderTeam() == TEAM_ALLIANCE ? 1 : 0, false, m_Map);
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_HORDE_CONTROLS_SHOW, GetDefenderTeam() == TEAM_HORDE ? 1 : 0, false, m_Map);
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_KEEP_ALLIANCE, GetDefenderTeam() == TEAM_ALLIANCE ? 1 : 0, false, m_Map);
@@ -574,7 +557,7 @@ void BattlefieldTB::OnBattleEnd(bool endByTimer)
 
     sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_BUILDINGS_CAPTURED_SHOW, 0, false, m_Map);
 
-    sWorldStateMgr->SetValue(WS_BATTLEFIELD_TB_STATE_BATTLE, 0, false, m_Map);
+    sWorldStateMgr->SetValueAndSaveInDb(WS_BATTLEFIELD_TB_STATE_BATTLE, 0, false, m_Map);
 }
 
 void BattlefieldTB::UpdateNPCsAndGameObjects()
@@ -599,26 +582,26 @@ void BattlefieldTB::UpdateNPCsAndGameObjects()
 
     // Tol Barad gates - closed during warmup
     if (GameObject* gates = GetGameObject(TBGatesGUID))
-        gates->SetGoState(GetState() == BATTLEFIELD_WARMUP ? GO_STATE_READY : GO_STATE_ACTIVE);
+        gates->SetGoState(GetState() == AsUnderlyingType(BATTLEFIELD_WARMUP) ? GO_STATE_READY : GO_STATE_ACTIVE);
 
     // Baradin Hold door - open when inactive
     if (GameObject* door = GetGameObject(TBDoorGUID))
-        door->SetGoState(GetState() == BATTLEFIELD_INACTIVE ? GO_STATE_ACTIVE : GO_STATE_READY);
+        door->SetGoState(GetState() == AsUnderlyingType(BATTLEFIELD_INACTIVE) ? GO_STATE_ACTIVE : GO_STATE_READY);
 
     // Decide which cellblock and questgiver will be active.
-    m_iCellblockRandom = GetState() == BATTLEFIELD_INACTIVE ? urand(0, CELLBLOCK_MAX - 1) : CELLBLOCK_NONE;
+    m_iCellblockRandom = GetState() == AsUnderlyingType(BATTLEFIELD_INACTIVE) ? urand(0, CELLBLOCK_MAX - 1) : uint8(CELLBLOCK_NONE);
 
     // To The Hole gate
     if (GameObject* door = GetGameObject(m_gateToTheHoleGUID))
-        door->SetGoState(m_iCellblockRandom == CELLBLOCK_THE_HOLE ? GO_STATE_ACTIVE : GO_STATE_READY);
+        door->SetGoState(m_iCellblockRandom == AsUnderlyingType(CELLBLOCK_THE_HOLE) ? GO_STATE_ACTIVE : GO_STATE_READY);
 
     // D-Block gate
     if (GameObject* door = GetGameObject(m_gateDBlockGUID))
-        door->SetGoState(m_iCellblockRandom == CELLBLOCK_D_BLOCK ? GO_STATE_ACTIVE : GO_STATE_READY);
+        door->SetGoState(m_iCellblockRandom == AsUnderlyingType(CELLBLOCK_D_BLOCK) ? GO_STATE_ACTIVE : GO_STATE_READY);
 
     // Cursed Depths gate
     if (GameObject* door = GetGameObject(m_gateCursedDepthsGUID))
-        door->SetGoState(m_iCellblockRandom == CELLBLOCK_CURSED_DEPTHS ? GO_STATE_ACTIVE : GO_STATE_READY);
+        door->SetGoState(m_iCellblockRandom == AsUnderlyingType(CELLBLOCK_CURSED_DEPTHS) ? GO_STATE_ACTIVE : GO_STATE_READY);
 
     if (GetState() == BATTLEFIELD_INACTIVE)
     {
@@ -768,23 +751,23 @@ void BattlefieldTB::OnGameObjectCreate(GameObject* go)
     {
         case GO_TOLBARAD_GATES:
             TBGatesGUID = go->GetGUID();
-            go->SetGoState(GetState() == BATTLEFIELD_WARMUP ? GO_STATE_READY : GO_STATE_ACTIVE);
+            go->SetGoState(GetState() == AsUnderlyingType(BATTLEFIELD_WARMUP) ? GO_STATE_READY : GO_STATE_ACTIVE);
             break;
         case GO_TOLBARAD_DOOR:
             TBDoorGUID = go->GetGUID();
-            go->SetGoState(GetState() == BATTLEFIELD_INACTIVE ? GO_STATE_ACTIVE : GO_STATE_READY);
+            go->SetGoState(GetState() == AsUnderlyingType(BATTLEFIELD_INACTIVE) ? GO_STATE_ACTIVE : GO_STATE_READY);
             break;
         case GO_GATE_TO_THE_HOLE:
             m_gateToTheHoleGUID = go->GetGUID();
-            go->SetGoState(m_iCellblockRandom == CELLBLOCK_THE_HOLE ? GO_STATE_ACTIVE : GO_STATE_READY);
+            go->SetGoState(m_iCellblockRandom == AsUnderlyingType(CELLBLOCK_THE_HOLE) ? GO_STATE_ACTIVE : GO_STATE_READY);
             break;
         case GO_GATE_D_BLOCK:
             m_gateDBlockGUID = go->GetGUID();
-            go->SetGoState(m_iCellblockRandom == CELLBLOCK_D_BLOCK ? GO_STATE_ACTIVE : GO_STATE_READY);
+            go->SetGoState(m_iCellblockRandom == AsUnderlyingType(CELLBLOCK_D_BLOCK) ? GO_STATE_ACTIVE : GO_STATE_READY);
             break;
         case GO_CURSED_DEPTHS_GATE:
             m_gateCursedDepthsGUID = go->GetGUID();
-            go->SetGoState(m_iCellblockRandom == CELLBLOCK_CURSED_DEPTHS ? GO_STATE_ACTIVE : GO_STATE_READY);
+            go->SetGoState(m_iCellblockRandom == AsUnderlyingType(CELLBLOCK_CURSED_DEPTHS) ? GO_STATE_ACTIVE : GO_STATE_READY);
             break;
         case GO_CRATE_OF_CELLBLOCK_RATIONS:
         case GO_CURSED_SHACKLES:
@@ -998,13 +981,15 @@ class Battlefield_tol_barad : public BattlefieldScript
 public:
     Battlefield_tol_barad() : BattlefieldScript("battlefield_tb") { }
 
-    Battlefield* GetBattlefield() const override
+    Battlefield* GetBattlefield(Map* map) const override
     {
-        return new BattlefieldTB();
+        return new BattlefieldTB(map);
     }
 };
+}
 
 void AddSC_BF_tol_barad()
 {
+    using namespace Battlefields::TB;
     new Battlefield_tol_barad();
 }

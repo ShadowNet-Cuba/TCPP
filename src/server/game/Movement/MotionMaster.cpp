@@ -248,12 +248,12 @@ void MotionMaster::MoveTargetedHome()
     }
 }
 
-void MotionMaster::MoveRandom(float spawndist)
+void MotionMaster::MoveRandom(float wanderDistance)
 {
     if (_owner->GetTypeId() == TYPEID_UNIT)
     {
-        TC_LOG_DEBUG("movement.motionmaster", "MotionMaster::MoveRandom: '%s', started random movement (spawnDist: %f)", _owner->GetGUID().ToString().c_str(), spawndist);
-        Mutate(new RandomMovementGenerator<Creature>(spawndist), MOTION_SLOT_IDLE);
+        TC_LOG_DEBUG("movement.motionmaster", "MotionMaster::MoveRandom: '%s', started random movement (spawnDist: %f)", _owner->GetGUID().ToString().c_str(), wanderDistance);
+        Mutate(new RandomMovementGenerator<Creature>(wanderDistance), MOTION_SLOT_IDLE);
     }
 }
 
@@ -268,7 +268,7 @@ void MotionMaster::MoveFollow(Unit* target, float dist, float angle, bool joinFo
     Mutate(new FollowMovementGenerator(target, dist, angle, joinFormation, catchUpToTarget, faceTarget), slot);
 }
 
-void MotionMaster::MoveChase(Unit* target, float dist, Optional<ChaseAngle> angle)
+void MotionMaster::MoveChase(Unit* target, Optional<float> dist /*= std::nullopt*/, Optional<ChaseAngle> angle /*= std::nullopt*/)
 {
     // ignore movement request if target not exist
     if (!target || target == _owner)

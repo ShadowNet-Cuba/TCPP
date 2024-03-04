@@ -32,6 +32,8 @@
 #include "TemporarySummon.h"
 #include "Vehicle.h"
 
+namespace RubySanctum::Halion
+{
 enum Texts
 {
     // Shared
@@ -1354,7 +1356,7 @@ class go_twilight_portal : public GameObjectScript
                 {
                     case GO_HALION_PORTAL_EXIT:
                         PhasingHandler::AddPhase(gameobject, 174, true);
-                        _spellId = gameobject->GetGOInfo()->goober.spellId;
+                        _spellId = gameobject->GetGOInfo()->goober.spell;
                         break;
                     case GO_HALION_PORTAL_1:
                     case GO_HALION_PORTAL_2:
@@ -1875,11 +1877,12 @@ class spell_halion_blazing_aura : public SpellScriptLoader
             return new spell_halion_blazing_aura_SpellScript();
         }
 };
-
-
+}
 
 void AddSC_boss_halion()
 {
+    using namespace RubySanctum;
+    using namespace RubySanctum::Halion;
     new boss_halion();
     new boss_twilight_halion();
 

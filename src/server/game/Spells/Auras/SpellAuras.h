@@ -22,7 +22,6 @@
 #include "EventProcessor.h"
 #include "SpellAuraDefines.h"
 #include "SpellInfo.h"
-#include <typeinfo>
 
 class SpellInfo;
 struct SpellModifier;
@@ -80,7 +79,7 @@ class TC_GAME_API AuraApplication
         uint8 GetEffectMask() const { return _flags & (AFLAG_EFF_INDEX_0 | AFLAG_EFF_INDEX_1 | AFLAG_EFF_INDEX_2); }
         bool HasEffect(uint8 effect) const { ASSERT(effect < MAX_SPELL_EFFECTS);  return (_flags & (1 << effect)) != 0; }
         bool IsPositive() const { return (_flags & AFLAG_POSITIVE) != 0; }
-        bool IsSelfcast() const { return (_flags & AFLAG_CASTER) != 0; }
+        bool IsSelfcast() const { return (_flags & AFLAG_NOCASTER) != 0; }
         uint8 GetEffectsToApply() const { return _effectsToApply; }
         void UpdateApplyEffectMask(uint8 newEffMask, bool canHandleNewEffects);
 
@@ -153,11 +152,14 @@ class TC_GAME_API Aura
         static int32 CalcMaxDuration(SpellInfo const* spellInfo, WorldObject* caster);
         int32 GetDuration() const { return m_duration; }
         void SetDuration(int32 duration, bool withMods = false);
-        void RefreshDuration();
+        // Resets the duration and tick number of the aura and rolls over a remaining tick if specified. Use this method if a talent or spell is suposed to refresh an aura.
+        void RefreshDuration(bool resetPeriodicTimer = true);
+        // Used to refresh the entire aura duration and timers. Do NOT use this for refreshing durations via spells and talents. Use Aura::RefreshDuration instead.
         void RefreshTimers(bool resetPeriodicTimer);
         bool IsExpired() const { return !GetDuration() && !m_dropEvent; }
         bool IsPermanent() const { return GetMaxDuration() == -1; }
         int32 GetRolledOverDuration() const { return m_rolledOverDuration; }
+        int32 CalcRolledOverDuration() const;
 
         uint8 GetCharges() const { return m_procCharges; }
         void SetCharges(uint8 charges);
@@ -250,6 +252,7 @@ class TC_GAME_API Aura
         void CallScriptEffectCalcAmountHandlers(AuraEffect const* aurEff, int32& amount, bool & canBeRecalculated);
         void CallScriptEffectCalcPeriodicHandlers(AuraEffect const* aurEff, bool& isPeriodic, int32& amplitude);
         void CallScriptEffectCalcSpellModHandlers(AuraEffect const* aurEff, SpellModifier*& spellMod);
+        void CallScriptCalcDamageAndHealingHandlers(AuraEffect const* aurEff, AuraApplication const* aurApp, Unit* victim, int32& damageOrHealing, int32& flatMod, float& pctMod);
         void CallScriptEffectAbsorbHandlers(AuraEffect* aurEff, AuraApplication const* aurApp, DamageInfo& dmgInfo, uint32& absorbAmount, bool& defaultPrevented);
         void CallScriptEffectAfterAbsorbHandlers(AuraEffect* aurEff, AuraApplication const* aurApp, DamageInfo & dmgInfo, uint32& absorbAmount);
         void CallScriptEffectManaShieldHandlers(AuraEffect* aurEff, AuraApplication const* aurApp, DamageInfo & dmgInfo, uint32& absorbAmount, bool& defaultPrevented);
